@@ -81,4 +81,36 @@ public class GestorFestivos {
     public static String getNombreFestivo(LocalDate fecha) {
         return festivos.get(fecha);
     }
+    
+    /**
+     * Escribe la lista de festivos (fecha y nombre) desde la interfaz gráfica al archivo de texto.
+     */
+    public static void guardarFestivos(Map<LocalDate, String> nuevosFestivos) {
+        festivos = new HashMap<>(nuevosFestivos); // Actualizamos la memoria
+        
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(archivoFestivos))) {
+            pw.println("# Archivo de Festivos");
+            pw.println("# Formato: YYYY-MM-DD = Nombre del festivo");
+            pw.println("");
+            
+            // Ordenamos las fechas cronológicamente para que el archivo quede limpio
+            java.util.List<LocalDate> fechasOrdenadas = new java.util.ArrayList<>(festivos.keySet());
+            java.util.Collections.sort(fechasOrdenadas);
+            
+            for (LocalDate fecha : fechasOrdenadas) {
+                pw.println(fecha.toString() + " = " + festivos.get(fecha));
+            }
+        } catch (IOException e) {
+            System.err.println("Error al guardar el archivo de festivos: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Método auxiliar para devolver todos los festivos cargados en memoria.
+     */
+    public static Map<LocalDate, String> getTodosLosFestivos() {
+        return festivos;
+    }
+    
+    
 }

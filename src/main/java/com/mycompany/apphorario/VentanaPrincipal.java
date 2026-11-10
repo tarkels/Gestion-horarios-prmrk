@@ -113,7 +113,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         if (cmbAnioFiltro != null && cmbAnioFiltro.getSelectedItem() != null) {
             anioFiltro = cmbAnioFiltro.getSelectedItem().toString();
         }
-
+        System.out.println("DEBUG: Cargando tabla para el filtro de año -> " + anioFiltro);
+        
+        
         String sql = "SELECT * FROM registro_horas ";
         if (!anioFiltro.equals("Todos")) {
             sql += "WHERE fecha LIKE ? ";
@@ -129,10 +131,18 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             }
 
             try (ResultSet rs = pstmt.executeQuery()) {
-
+                //variable para debug
+                int contadorFilas = 0;
+                //
+                
                 while (rs.next()) {
+                    //variable para debug
+                    contadorFilas++;
+                    //                     
                     RegistroTurno turno = new RegistroTurno();
-                    turno.setId(rs.getInt("id"));
+                    //REFERENCIA OBSOLETA. Se ha eliminado de la tabla esta columna y ahora se usa una clave primaria combinada  
+                    //turno.setId(rs.getInt("id"));
+                    //
                     turno.setEmpleadoId(rs.getInt("empleado_id"));
 
                     String fechaStr = rs.getString("fecha");
@@ -150,72 +160,43 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                         turno.setHoraSalida(java.time.LocalTime.parse(salidaStrDb));
                     }
 
-                    // NUEVO: Lectura de las horas reales modificadas
+                    // CORREGIDO: Añadida la comprobación "!equals("null")" para evitar errores de parseo
                     String entradaRealStr = rs.getString("hora_entrada_real");
-                    if (entradaRealStr != null && !entradaRealStr.isEmpty()) {
+                    if (entradaRealStr != null && !entradaRealStr.equals("null") && !entradaRealStr.isEmpty()) {
                         turno.setHoraEntradaReal(java.time.LocalTime.parse(entradaRealStr));
                     }
 
                     String salidaRealStr = rs.getString("hora_salida_real");
-                    if (salidaRealStr != null && !salidaRealStr.isEmpty()) {
+                    if (salidaRealStr != null && !salidaRealStr.equals("null") && !salidaRealStr.isEmpty()) {
                         turno.setHoraSalidaReal(java.time.LocalTime.parse(salidaRealStr));
                     }
 
                     turno.setMinutosDescanso(rs.getInt("minutos_descanso"));
                     turno.setHorasComplementarias(rs.getDouble("horas_complementarias"));
                     turno.setTipoDia(rs.getString("tipo_dia"));
-
-                    // ¡Importante! Cargamos las observaciones reales de la base de datos
                     turno.setObservaciones(rs.getString("observaciones"));
 
-                    // Calculamos horas netas trabajadas
                     double horasEfectivas = turno.calcularHorasEfectivas();
 
-                    // NUEVO: Preparar los textos de Entrada y Salida con el "chivato" visual (*)
-                    java.time.LocalTime tEntrada = turno.getEntradaEfectiva();
-                    java.time.LocalTime tSalida = turno.getSalidaEfectiva();
-
-                    String entradaStr = (tEntrada != null) ? tEntrada.toString() : "-";
-                    String salidaStr = (tSalida != null) ? tSalida.toString() : "-";
-
-                    // Si la hora real no es nula, le pegamos el asterisco
-                    if (turno.getHoraEntradaReal() != null) entradaStr += "*";
-                    if (turno.getHoraSalidaReal() != null) salidaStr += "*";
-
-                    /**
-                    // Creamos la fila con exactamente 9 elementos, usando las nuevas variables de texto
-                    Object[] fila = new Object[] {
-                        turno.getFecha().toString(),                                                     // 1. Fecha
-                        turno.getDiaSemana(),                                                            // 2. Día de la semana
-                        entradaStr,                                                                      // 3. Entrada (con posible *)
-                        salidaStr,                                                                       // 4. Salida (con posible *)
-                        String.format(new java.util.Locale("es", "ES"), "%.2f", horasEfectivas),         // 5. Horas Turno(h)
-                        turno.getMinutosDescanso() + " min",                                             // 6. Descanso (min)
-                        String.format(new java.util.Locale("es", "ES"), "%.2f", turno.getHorasComplementarias()), // 7. Compl. (h)
-                        turno.getTipoDia(),                                                              // 8. Tipo Día
-                        turno.getObservaciones() != null ? turno.getObservaciones() : ""                 // 9. Observaciones reales
-                    };
-                    **/  
-
                     Object[] fila = new Object[]{
-                        turno.getFecha().toString(),                                                        // 1. Fecha
-                        turno.getDiaSemana(),                                                               // 2. Día de la semana
-                        (turno.getHoraEntradaReal() != null) ? turno.getHoraEntradaReal() + "*" : (turno.getHoraEntrada() != null ? turno.getHoraEntrada() : "-"), // 3. Entrada (con posible *)
-                        (turno.getHoraSalidaReal() != null) ? turno.getHoraSalidaReal() + "*" : (turno.getHoraSalida() != null ? turno.getHoraSalida() : "-"),     // 4. Salida (con posible *)
-                        String.format("%.2f", horasEfectivas),                                              // 5. Horas Turno(h)  Muestra las horas reales netas (sin doble suma)
-                        turno.getMinutosDescanso() + " min",                                                // 6. Descanso (min)
-                        String.format("%.2f", turno.getHorasComplementarias()),                             // 7. Compl. (h) Columna independiente para H. C.
-                        turno.getTipoDia(),                                                                 // 8. Tipo Día
-                        turno.getObservaciones()                                                            // 9. Observaciones reales
+                        turno.getFecha().toString(),
+                        turno.getDiaSemana(),
+                        (turno.getHoraEntradaReal() != null) ? turno.getHoraEntradaReal() + "*" : (turno.getHoraEntrada() != null ? turno.getHoraEntrada() : "-"),
+                        (turno.getHoraSalidaReal() != null) ? turno.getHoraSalidaReal() + "*" : (turno.getHoraSalida() != null ? turno.getHoraSalida() : "-"),
+                        String.format("%.2f", horasEfectivas),
+                        turno.getMinutosDescanso() + " min",
+                        String.format("%.2f", turno.getHorasComplementarias()),
+                        turno.getTipoDia(),
+                        turno.getObservaciones()
                     };                    
-                    
                     
                     modelo.addRow(fila);
                 }
+                System.out.println("DEBUG: Se han añadido " + contadorFilas + " filas a la tabla.");
             } 
-        }catch (SQLException e) {
+        } catch (SQLException e) {
             System.out.println("Error al cargar turnos en la tabla: " + e.getMessage());
-            }  
+        }  
     }
     
     private void cargarAniosEnFiltro() {
@@ -280,7 +261,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     
     // Código para cambiar la apariencia de la interfaz con Flatlaf
     // Nota: Si en el futuro se añaden más temas (como IntelliJ o macOS), solo hay que añadir un nuevo case a este bloque.
-    private void cambiarTema(String tema) {
+    void cambiarTema(String tema) {
         try {
             // 1. Asignar el tema elegido
             switch (tema) {
@@ -355,8 +336,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         cmbAnioFiltro = new javax.swing.JComboBox<>();
         jSeparator2 = new javax.swing.JSeparator();
         jSeparator3 = new javax.swing.JSeparator();
-        lblTemaVisual = new javax.swing.JLabel();
-        cmbTemaVisual = new javax.swing.JComboBox<>();
+        btnConfiguracion = new javax.swing.JButton();
         jScrollPane1Tabla = new javax.swing.JScrollPane();
         tablaTurnos = new javax.swing.JTable();
         jPanelBotonera = new javax.swing.JPanel();
@@ -364,6 +344,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         btnHorasComplementarias = new javax.swing.JButton();
         btnEditarTurno = new javax.swing.JButton();
         btnExportarCalendar = new javax.swing.JButton();
+        btnSubirGoogleCalendar = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -378,7 +359,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanelTituloLayout.createSequentialGroup()
                 .addGap(376, 376, 376)
-                .addComponent(JLabelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(JLabelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, 635, Short.MAX_VALUE)
                 .addGap(277, 277, 277))
         );
         jPanelTituloLayout.setVerticalGroup(
@@ -443,6 +424,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         btnGuardarEmpleado.setText("Guardar/Actualizar datos");
         btnGuardarEmpleado.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        btnGuardarEmpleado.setMaximumSize(new java.awt.Dimension(177, 24));
+        btnGuardarEmpleado.setMinimumSize(new java.awt.Dimension(177, 24));
+        btnGuardarEmpleado.setPreferredSize(new java.awt.Dimension(177, 24));
         btnGuardarEmpleado.addActionListener(this::btnGuardarEmpleadoActionPerformed);
 
         lblHorasIrregularesNeg.setText("Horas Irregulares (-):");
@@ -461,6 +445,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         btnActualizarResumen.setText("Actualizar Estadísticas");
         btnActualizarResumen.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        btnActualizarResumen.setMaximumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setMinimumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setPreferredSize(new java.awt.Dimension(177, 23));
         btnActualizarResumen.addActionListener(this::btnActualizarResumenActionPerformed);
 
         lblHorasComplementarias.setText("H. Complementarias:");
@@ -483,10 +470,11 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         cmbAnioFiltro.addActionListener(this::cmbAnioFiltroActionPerformed);
 
-        lblTemaVisual.setText("Cambiar apariencia: ");
-
-        cmbTemaVisual.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Claro", "Oscuro" }));
-        cmbTemaVisual.addActionListener(this::cmbTemaVisualActionPerformed);
+        btnConfiguracion.setText("Configuración");
+        btnConfiguracion.setMaximumSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.setMinimumSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.setPreferredSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.addActionListener(this::btnConfiguracionActionPerformed);
 
         javax.swing.GroupLayout jPaneldatosLayout = new javax.swing.GroupLayout(jPaneldatos);
         jPaneldatos.setLayout(jPaneldatosLayout);
@@ -494,78 +482,80 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
                 .addContainerGap(32, Short.MAX_VALUE)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblHorasComplementarias)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblPorcentajeHorasIrregulares)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblSaldoIrregulares)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(lblSaldoIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblHorasIrregularesNeg)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(lblHorasIrregularesNegVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblHorasIrregularesPos)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblHorasComplementarias)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblPorcentajeHorasIrregulares)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblSaldoIrregulares)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblSaldoIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblHorasIrregularesNeg)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasIrregularesNegVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblHorasIrregularesPos)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addComponent(lblHorasTrabajadas)
+                                        .addComponent(lblDiasTrabajados)
+                                        .addComponent(lblAnioFiltro))
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(22, 22, 22)
+                                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addComponent(jSeparator2)
+                                .addComponent(jSeparator1)
+                                .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
                             .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                .addComponent(lblHorasTrabajadas)
-                                .addComponent(lblDiasTrabajados)
-                                .addComponent(lblAnioFiltro))
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGap(22, 22, 22)
-                            .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addComponent(jSeparator2)
-                        .addComponent(jSeparator1)
-                        .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addGap(94, 94, 94)
-                            .addComponent(btnGuardarEmpleado))
-                        .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addComponent(lblSabadosLibres)
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblComplNomina)
-                            .addGap(18, 18, 18)
-                            .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addComponent(lblFestivosTrabajados))
-                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                        .addGroup(jPaneldatosLayout.createSequentialGroup()
-                            .addComponent(lblTemaVisual)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(cmbTemaVisual, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addComponent(jSeparator3, javax.swing.GroupLayout.PREFERRED_SIZE, 321, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addGap(37, 37, 37))
+                                .addComponent(lblSabadosLibres)
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblComplNomina)
+                                    .addGap(18, 18, 18)
+                                    .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addComponent(lblFestivosTrabajados))
+                            .addComponent(jSeparator3, javax.swing.GroupLayout.PREFERRED_SIZE, 321, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(37, 37, 37))
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                        .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(106, 106, 106))))
             .addGroup(jPaneldatosLayout.createSequentialGroup()
-                .addGap(128, 128, 128)
-                .addComponent(btnActualizarResumen)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addGap(106, 106, 106)
+                        .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addGap(103, 103, 103)
+                        .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
         jPaneldatosLayout.setVerticalGroup(
@@ -588,7 +578,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                     .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(18, 18, 18)
-                .addComponent(btnGuardarEmpleado)
+                .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(14, 14, 14)
                 .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(jPaneldatosLayout.createSequentialGroup()
@@ -644,14 +634,12 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                     .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblFestivosTrabajados))
                 .addGap(18, 18, 18)
-                .addComponent(btnActualizarResumen)
-                .addGap(18, 18, 18)
+                .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jSeparator3, javax.swing.GroupLayout.PREFERRED_SIZE, 3, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(cmbTemaVisual, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblTemaVisual))
-                .addContainerGap(35, Short.MAX_VALUE))
+                .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
         tablaTurnos.setModel(new javax.swing.table.DefaultTableModel(
@@ -680,6 +668,8 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jScrollPane1Tabla.setViewportView(tablaTurnos);
 
         btnImportarPDF.setText("Importar PDF");
+        btnImportarPDF.setMaximumSize(new java.awt.Dimension(177, 23));
+        btnImportarPDF.setMinimumSize(new java.awt.Dimension(177, 23));
         btnImportarPDF.addActionListener(this::btnImportarPDFActionPerformed);
 
         btnHorasComplementarias.setText("Añadir H. Complementarias");
@@ -688,8 +678,15 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         btnEditarTurno.setText("Editar Día / Cambios de Turno");
         btnEditarTurno.addActionListener(this::btnEditarTurnoActionPerformed);
 
-        btnExportarCalendar.setText("Exportar a Calendar (.ics)");
+        btnExportarCalendar.setText("Exportar turnos (.ics)");
+        btnExportarCalendar.setMaximumSize(new java.awt.Dimension(177, 23));
+        btnExportarCalendar.setMinimumSize(new java.awt.Dimension(177, 23));
         btnExportarCalendar.addActionListener(this::btnExportarCalendarActionPerformed);
+
+        btnSubirGoogleCalendar.setText("Exportar a Google Calendar");
+        btnSubirGoogleCalendar.setMaximumSize(new java.awt.Dimension(177, 23));
+        btnSubirGoogleCalendar.setMinimumSize(new java.awt.Dimension(177, 23));
+        btnSubirGoogleCalendar.addActionListener(this::btnSubirGoogleCalendarActionPerformed);
 
         javax.swing.GroupLayout jPanelBotoneraLayout = new javax.swing.GroupLayout(jPanelBotonera);
         jPanelBotonera.setLayout(jPanelBotoneraLayout);
@@ -699,23 +696,30 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                 .addGap(24, 24, 24)
                 .addComponent(btnImportarPDF, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(btnHorasComplementarias, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(btnEditarTurno, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(btnExportarCalendar)
-                .addContainerGap(53, Short.MAX_VALUE))
+                .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(jPanelBotoneraLayout.createSequentialGroup()
+                        .addComponent(btnEditarTurno, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(btnSubirGoogleCalendar, javax.swing.GroupLayout.DEFAULT_SIZE, 177, Short.MAX_VALUE))
+                    .addGroup(jPanelBotoneraLayout.createSequentialGroup()
+                        .addComponent(btnHorasComplementarias, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(btnExportarCalendar, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
         jPanelBotoneraLayout.setVerticalGroup(
             jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelBotoneraLayout.createSequentialGroup()
                 .addGap(28, 28, 28)
                 .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(btnImportarPDF)
+                    .addComponent(btnImportarPDF, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnHorasComplementarias)
+                    .addComponent(btnExportarCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnEditarTurno)
-                    .addComponent(btnExportarCalendar))
-                .addContainerGap(27, Short.MAX_VALUE))
+                    .addComponent(btnSubirGoogleCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(29, Short.MAX_VALUE))
         );
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -740,9 +744,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                         .addComponent(jPaneldatos, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addContainerGap())
                     .addGroup(layout.createSequentialGroup()
-                        .addComponent(jScrollPane1Tabla)
+                        .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.PREFERRED_SIZE, 657, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jPanelBotonera, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                        .addComponent(jPanelBotonera, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
         );
 
         pack();
@@ -1105,12 +1109,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         actualizarPanelResumen();          
     }//GEN-LAST:event_cmbAnioFiltroActionPerformed
 
-    private void cmbTemaVisualActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cmbTemaVisualActionPerformed
-        String temaSeleccionado = cmbTemaVisual.getSelectedItem().toString();
-        cambiarTema(temaSeleccionado);
-        
-    }//GEN-LAST:event_cmbTemaVisualActionPerformed
-
     private void btnExportarCalendarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnExportarCalendarActionPerformed
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
         if (empleado == null) {
@@ -1164,6 +1162,61 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_btnExportarCalendarActionPerformed
 
+    private void btnConfiguracionActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConfiguracionActionPerformed
+        VentanaConfiguracion configDlg = new VentanaConfiguracion(this, true);
+        configDlg.setVisible(true);
+    }//GEN-LAST:event_btnConfiguracionActionPerformed
+
+    private void btnSubirGoogleCalendarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSubirGoogleCalendarActionPerformed
+        Trabajador empleado = BaseDeDatos.obtenerEmpleado();
+        if (empleado == null) return;
+
+        // 1. Leemos el año seleccionado en la interfaz
+        String anioSeleccionado = (cmbAnioFiltro != null && cmbAnioFiltro.getSelectedItem() != null) 
+                                  ? cmbAnioFiltro.getSelectedItem().toString() : "Todos";
+        
+        // 2. Obtenemos todos los turnos guardados
+        java.util.List<RegistroTurno> turnos = BaseDeDatos.obtenerTurnosParaExportar(empleado.getId(), anioSeleccionado);
+        
+        if (turnos.isEmpty()) {
+            javax.swing.JOptionPane.showMessageDialog(this, "No hay turnos para subir.");
+            return;
+        }
+
+        // Mostramos un aviso de progreso
+        javax.swing.JOptionPane.showMessageDialog(this, 
+            "Se abrirá el navegador para iniciar sesión en Google (si no lo has hecho ya).\n" +
+            "Tras aceptar, por favor espera unos segundos mientras se sincronizan los turnos futuros.");
+
+        int subidos = 0;
+        try {
+            // Obtenemos la fecha de hoy para comparar
+            java.time.LocalDate hoy = java.time.LocalDate.now();
+            
+            for (RegistroTurno t : turnos) {
+                // Comprobamos que el turno tenga horas y que la fecha NO sea anterior a hoy
+                if (t.getHoraEntrada() != null && !t.getFecha().isBefore(hoy)) {
+                    
+                    String titulo = "Primark - " + t.getHoraEntrada().toString() + " a " + t.getHoraSalida().toString();
+                    GoogleCalendarService.insertarTurnoEnGoogleCalendar(t, titulo);
+                    subidos++;
+                }
+            }
+            
+            if (subidos > 0) {
+                javax.swing.JOptionPane.showMessageDialog(this, "¡Se han sincronizado " + subidos + " turnos con tu Google Calendar 'Trabajo'!");
+            } else {
+                javax.swing.JOptionPane.showMessageDialog(this, "No hay turnos futuros pendientes de sincronizar.");
+            }
+            
+        } catch (Exception e) {
+            javax.swing.JOptionPane.showMessageDialog(this, 
+                "Error al sincronizar con Google: " + e.getMessage(), 
+                "Error", javax.swing.JOptionPane.ERROR_MESSAGE);
+            e.printStackTrace();
+        }
+    }//GEN-LAST:event_btnSubirGoogleCalendarActionPerformed
+
     /**
      * @param args the command line arguments
      */
@@ -1204,14 +1257,15 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JLabel JLabelTitulo;
     private javax.swing.JButton btnActualizarResumen;
+    private javax.swing.JButton btnConfiguracion;
     private javax.swing.JButton btnEditarTurno;
     private javax.swing.JButton btnExportarCalendar;
     private javax.swing.JButton btnGuardarEmpleado;
     private javax.swing.JButton btnHorasComplementarias;
     private javax.swing.JButton btnImportarPDF;
+    private javax.swing.JButton btnSubirGoogleCalendar;
     private javax.swing.JComboBox<String> cmbAnioFiltro;
     private javax.swing.JComboBox<String> cmbJornadaSemanal;
-    private javax.swing.JComboBox<String> cmbTemaVisual;
     private javax.swing.JPanel jPanelBotonera;
     private javax.swing.JPanel jPanelTitulo;
     private javax.swing.JPanel jPaneldatos;
@@ -1244,7 +1298,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JLabel lblSabadoslibresVal;
     private javax.swing.JLabel lblSaldoIrregulares;
     private javax.swing.JLabel lblSaldoIrregularesVal;
-    private javax.swing.JLabel lblTemaVisual;
     private javax.swing.JTable tablaTurnos;
     private javax.swing.JTextField txtApellidos;
     private javax.swing.JTextField txtHorasAnuales;

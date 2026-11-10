@@ -1,6 +1,22 @@
+# Archivos y carpetas de compilación de NetBeans/Maven
 /build/
 /dist/
 /nbproject/private/
-*.db
 .nbattrs
 target/
+.classpath
+.project
+.settings/
+
+# Archivos de la base de datos local (¡Muy importante no subir los turnos privados de la gente!)
+*.db
+*.sqlite
+horarios.db
+
+# Credenciales y sesiones de Google
+credentials.json
+/tokens/
+
+# Archivos de configuración local o preferencias de usuario (si usas alguno)
+festivos.txt
+config.properties

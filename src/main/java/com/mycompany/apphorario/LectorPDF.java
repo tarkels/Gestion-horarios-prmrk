@@ -348,33 +348,31 @@ public class LectorPDF {
     }
 
     private static List<RectangularTextContainer> buscarFilaEmpleado(List<Table> tablas, Trabajador emp) {
-        String apellidosBuscados = normalizarTexto(emp.getApellidos());
-        String[] claves = apellidosBuscados.split(" ");
+        // 1. Normalizamos los apellidos de la base de datos eliminando tildes y poniéndolo en mayúsculas
+        String apellidosBuscadosNorm = normalizarTexto(emp.getApellidos()); 
         
+        // 2. Eliminamos los espacios del apellido buscado para evitar fallos por saltos de línea de Tabula
+        // (Ej: "LOURIDO VILLA" pasará a "LOURIDOVILLA")
+        String claveSolida = apellidosBuscadosNorm.replace(" ", "");
+
         for (Table tabla : tablas) {
             for (List<RectangularTextContainer> fila : tabla.getRows()) {
                 StringBuilder textoFilaBuilder = new StringBuilder();
                 
-                // Recopilar el texto crudo de TODA la fila primero
+                // Recopilar el texto crudo de TODA la fila
                 for (RectangularTextContainer celda : fila) {
                     textoFilaBuilder.append(celda.getText()).append(" ");
                 }
                 
-                // Limpiar agresivamente todos los saltos de línea y normalizar
-                String lineaCruda = textoFilaBuilder.toString().replaceAll("[\\r\\n]+", " ");
+                // 3. Normalizamos el texto entero de la fila leída del PDF
+                String lineaCruda = textoFilaBuilder.toString().replaceAll("[\\r\\n]+", "");
                 String lineaNorm = normalizarTexto(lineaCruda);
                 
-                // Comprobamos si las claves (apellidos) están en esa línea
-                boolean coincide = true;
-                for (String clave : claves) {
-                    if (clave.length() > 2 && !lineaNorm.contains(clave)) { 
-                        coincide = false; 
-                        break; 
-                    }
-                }
+                // 4. Compactamos la línea entera quitándole también los espacios
+                String lineaCompacta = lineaNorm.replace(" ", "");
                 
-                // Si la fila pertenece al empleado, la devolvemos intacta para procesarla
-                if (coincide && claves.length > 0) {
+                // 5. Comprobamos si el apellido fusionado ("LOURIDOVILLA") está dentro de la línea compactada ("LOURIDOVILLAJUDIT...")
+                if (lineaCompacta.contains(claveSolida)) {
                     return fila;
                 }
             }

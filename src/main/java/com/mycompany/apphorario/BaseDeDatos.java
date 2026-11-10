@@ -51,7 +51,7 @@ public class BaseDeDatos {
                 + "PRIMARY KEY (empleado_id, fecha)"
                 + ");";
 
-        String sqlEmpleado = "CREATE TABLE IF NOT EXISTS trabajador ("
+        String sqlEmpleado = "CREATE TABLE IF NOT EXISTS empleado ("
                 + "id INTEGER PRIMARY KEY, "
                 + "nombre TEXT, "
                 + "apellidos TEXT, "
@@ -71,7 +71,7 @@ public class BaseDeDatos {
     
     //Método para guardar o actualizar la ficha de empleado
     public static void guardarOActualizarEmpleado (Trabajador t) {
-        //Consultamos si ya existe algún registro
+        // Consultamos la tabla "empleado"
         String sqlCheck = "SELECT COUNT(*) FROM empleado";
         
         try (Connection conn = conectar();
@@ -84,18 +84,16 @@ public class BaseDeDatos {
                 }
                 
                 if (existe) {
-                    //Si existe utilizamos la primera fila
                     String sqlUpdate = "UPDATE empleado SET nombre = ?, apellidos = ?, jornada_semanal = ?, horas_anuales = ? WHERE id = 1";
                     try (PreparedStatement pstmt = conn.prepareStatement(sqlUpdate)) {
-                    pstmt.setString(1, t.getNombre());
-                    pstmt.setString(2, t.getApellidos());
-                    pstmt.setDouble(3, t.getJornadaSemanal());
-                    pstmt.setDouble(4, t.getHorasAnuales());
-                    pstmt.executeUpdate();
-                    System.out.println("Datos del empleado actualizados correctamente.");
+                        pstmt.setString(1, t.getNombre());
+                        pstmt.setString(2, t.getApellidos());
+                        pstmt.setDouble(3, t.getJornadaSemanal());
+                        pstmt.setDouble(4, t.getHorasAnuales());
+                        pstmt.executeUpdate();
+                        System.out.println("Datos del empleado actualizados correctamente.");
                     }                
                 } else {
-                    //Si no existe, insertamos un registro nuevo
                     String sqlInsert = "INSERT INTO empleado (nombre, apellidos, jornada_semanal, horas_anuales) VALUES (?, ?, ?, ?)";
                     try (PreparedStatement pstmt = conn.prepareStatement(sqlInsert)) {
                         pstmt.setString(1, t.getNombre());
@@ -130,7 +128,7 @@ public class BaseDeDatos {
         } catch (SQLException e) {
             System.out.println("Error al obtener empleado: " + e.getMessage());
         }
-        return null; //Si aún no se ha guardardo ningún empleado
+        return null; // Si aún no se ha guardado ningún empleado
     }
     
     // NUEVO: Método para guardar o actualizar un turno importado desde el PDF
@@ -148,40 +146,40 @@ public class BaseDeDatos {
             System.out.println("Error al comprobar turno: " + e.getMessage());
         }
 
-        // 2. Preparar los Strings (para manejar los posibles nulos)
+        // 2. Preparar los Strings (para manejar los posibles nulos del PDF)
         String entradaStr = (turno.getHoraEntrada() != null) ? turno.getHoraEntrada().toString() : null;
         String salidaStr = (turno.getHoraSalida() != null) ? turno.getHoraSalida().toString() : null;
-        String entradaRealStr = (turno.getHoraEntradaReal() != null) ? turno.getHoraEntradaReal().toString() : null;
-        String salidaRealStr = (turno.getHoraSalidaReal() != null) ? turno.getHoraSalidaReal().toString() : null;
 
         if (existe) {
-            // UPDATE: Preservamos hora_entrada y hora_salida originales del PDF.
-            // Si se modifica el turno, los cambios van a hora_entrada_real y hora_salida_real.
+            // AL REIMPORTAR EL PDF: Actualizamos el horario base oficial del PDF y 
+            // FORZAMOS a limpiar las horas reales a NULL y las complementarias a 0.0 
+            // para eliminar cualquier marca o edición manual anterior.
             String sqlUpdate = "UPDATE registro_horas SET "
-                    + "minutos_descanso = ?, horas_complementarias = ?, tipo_dia = ?, observaciones = ?, "
-                    + "hora_entrada_real = ?, hora_salida_real = ? "
+                    + "hora_entrada = ?, hora_salida = ?, minutos_descanso = ?, "
+                    + "tipo_dia = ?, observaciones = ?, "
+                    + "hora_entrada_real = NULL, hora_salida_real = NULL, "
+                    + "horas_complementarias = 0.0 "
                     + "WHERE empleado_id = ? AND fecha = ?";
 
             try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sqlUpdate)) {
-                pstmt.setInt(1, turno.getMinutosDescanso());
-                pstmt.setDouble(2, turno.getHorasComplementarias());
-                pstmt.setString(3, turno.getTipoDia());
-                pstmt.setString(4, turno.getObservaciones());
-                pstmt.setString(5, entradaRealStr != null ? entradaRealStr : entradaStr);
-                pstmt.setString(6, salidaRealStr != null ? salidaRealStr : salidaStr);
-                pstmt.setInt(7, turno.getEmpleadoId());
-                pstmt.setString(8, turno.getFecha().toString());
+                pstmt.setString(1, entradaStr);
+                pstmt.setString(2, salidaStr);
+                pstmt.setInt(3, turno.getMinutosDescanso());
+                pstmt.setString(4, turno.getTipoDia());
+                pstmt.setString(5, turno.getObservaciones());
+                pstmt.setInt(6, turno.getEmpleadoId());
+                pstmt.setString(7, turno.getFecha().toString());
                 pstmt.executeUpdate();
             } catch (SQLException e) {
-                System.out.println("Error al actualizar turno: " + e.getMessage());
+                System.out.println("Error al actualizar turno desde PDF: " + e.getMessage());
             }
         } else {
-            // INSERT con las dos columnas nuevas
+            // INSERT para nuevos turnos que no existían en la BDD
             String sqlInsert = "INSERT INTO registro_horas ("
                     + "empleado_id, fecha, dia_semana, hora_entrada, hora_salida, "
                     + "minutos_descanso, horas_complementarias, tipo_dia, observaciones, "
                     + "hora_entrada_real, hora_salida_real) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    + "VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, ?, NULL, NULL)";
 
             try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sqlInsert)) {
                 pstmt.setInt(1, turno.getEmpleadoId());
@@ -190,14 +188,11 @@ public class BaseDeDatos {
                 pstmt.setString(4, entradaStr);
                 pstmt.setString(5, salidaStr);
                 pstmt.setInt(6, turno.getMinutosDescanso());
-                pstmt.setDouble(7, turno.getHorasComplementarias());
-                pstmt.setString(8, turno.getTipoDia());
-                pstmt.setString(9, turno.getObservaciones());
-                pstmt.setString(10, entradaRealStr);
-                pstmt.setString(11, salidaRealStr);
+                pstmt.setString(7, turno.getTipoDia());
+                pstmt.setString(8, turno.getObservaciones());
                 pstmt.executeUpdate();
             } catch (SQLException e) {
-                System.out.println("Error al insertar turno: " + e.getMessage());
+                System.out.println("Error al insertar turno desde PDF: " + e.getMessage());
             }
         }
     }

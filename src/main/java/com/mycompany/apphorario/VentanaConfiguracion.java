@@ -25,10 +25,13 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         super(parent, modal);
         this.ventanaPrincipal = parent; // Guardamos la referencia
         initComponents();
+        
         setLocationRelativeTo(parent); // Centrar respecto a la principal
         
         configurarPanelFestivos();
         cargarDatosActuales();
+        cargarConfiguracionCorreo();
+        
     }
 
     private void configurarPanelFestivos() {
@@ -71,16 +74,222 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     private void cargarDatosActuales() {
         java.util.Map<java.time.LocalDate, String> festivosActuales = GestorFestivos.getTodosLosFestivos();
         if (festivosActuales != null) {
-            for (java.util.Map.Entry<java.time.LocalDate, String> entry : festivosActuales.entrySet()) {
-                modeloFestivos.addRow(new Object[]{entry.getKey().toString(), entry.getValue()});
+            // 1. Extraer las fechas en una lista y ordenarlas de menor a mayor
+            java.util.List<java.time.LocalDate> fechasOrdenadas = new java.util.ArrayList<>(festivosActuales.keySet());
+            java.util.Collections.sort(fechasOrdenadas);
+            
+            // 2. Recorrer la lista ya ordenada y añadir las filas a la tabla
+            for (java.time.LocalDate fecha : fechasOrdenadas) {
+                modeloFestivos.addRow(new Object[]{fecha.toString(), festivosActuales.get(fecha)});
             }
         }
     }
     
+    private void cargarConfiguracionCorreo() {
+        txtCuentadeCorreoVal.setText(ConfiguracionCorreo.getUsuario());
+        txtRemitenteVal.setText(ConfiguracionCorreo.getRemitente());
+
+        txtServidorVal.setText(ConfiguracionCorreo.getHost());
+        txtPuertoVal.setText(
+                Integer.toString(ConfiguracionCorreo.getPuerto())
+        );
+
+        // Esta primera versión está configurada exclusivamente para Gmail.
+        txtServidorVal.setEditable(false);
+        txtPuertoVal.setEditable(false);
+
+        txtContrasenhaVal.setToolTipText(
+                "Contraseña de aplicación. Solo se conserva durante esta sesión."
+        );
+
+        char[] password = ConfiguracionCorreo.getPasswordSesion();
+
+        try {
+            txtContrasenhaVal.setText(new String(password));
+        } finally {
+            java.util.Arrays.fill(password, '\0');
+        }
+    }
     
     
+    private char[] leerPasswordCorreo() {
+        char[] original = txtContrasenhaVal.getPassword();
+
+        try {
+            char[] temporal = new char[original.length];
+            int cantidad = 0;
+
+            for (char caracter : original) {
+                if (!Character.isWhitespace(caracter)) {
+                    temporal[cantidad++] = caracter;
+                }
+            }
+
+            try {
+                return java.util.Arrays.copyOf(temporal, cantidad);
+            } finally {
+                java.util.Arrays.fill(temporal, '\0');
+            }
+
+        } finally {
+            java.util.Arrays.fill(original, '\0');
+        }
+    }
     
     
+    private void probarConexionCorreo() {
+        final String usuario = txtCuentadeCorreoVal.getText().trim();
+        final char[] password = leerPasswordCorreo();
+
+        if (usuario.isEmpty() || password.length == 0) {
+            java.util.Arrays.fill(password, '\0');
+
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "Introduce la cuenta de correo y la contraseña de aplicación.",
+                    "Faltan datos",
+                    javax.swing.JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        btnProbarConexion.setEnabled(false);
+        btnProbarConexion.setText("Conectando...");
+
+        new javax.swing.SwingWorker<Void, Void>() {
+
+            @Override
+            protected Void doInBackground() throws Exception {
+                try {
+                    GestorCorreoIMAP.probarConexion(
+                            usuario,
+                            password,
+                            ConfiguracionCorreo.getHost(),
+                            ConfiguracionCorreo.getPuerto()
+                    );
+
+                    return null;
+
+                } finally {
+                    java.util.Arrays.fill(password, '\0');
+                }
+            }
+
+            @Override
+            protected void done() {
+                btnProbarConexion.setEnabled(true);
+                btnProbarConexion.setText("Probar conexión");
+
+                // El usuario puede haber cerrado el diálogo durante la prueba.
+                if (!VentanaConfiguracion.this.isDisplayable()) {
+                    return;
+                }
+
+                try {
+                    get();
+
+                    javax.swing.JOptionPane.showMessageDialog(
+                            VentanaConfiguracion.this,
+                            "Conexión correcta con el buzón.\n"
+                            + "Pulsa Guardar para conservar los ajustes.",
+                            "Conexión IMAP",
+                            javax.swing.JOptionPane.INFORMATION_MESSAGE
+                    );
+
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    Throwable causa = ex.getCause();
+
+                    String mensaje;
+
+                    if (causa instanceof javax.mail.AuthenticationFailedException) {
+                        mensaje = "El servidor ha rechazado las credenciales.\n"
+                                + "Comprueba la cuenta y la contraseña de aplicación.";
+                    } else {
+                        mensaje = "No se ha podido abrir el buzón por IMAP.\n"
+                                + "Comprueba la conexión y los ajustes de la cuenta.";
+                    }
+
+                    javax.swing.JOptionPane.showMessageDialog(
+                            VentanaConfiguracion.this,
+                            mensaje,
+                            "Error de conexión",
+                            javax.swing.JOptionPane.ERROR_MESSAGE
+                    );
+                }
+            }
+        }.execute();
+    }
+    
+    private boolean validarConfiguracionCorreo() {
+        String usuario = txtCuentadeCorreoVal.getText().trim();
+        String remitente = txtRemitenteVal.getText().trim();
+
+        char[] password = leerPasswordCorreo();
+
+        try {
+            boolean sinConfigurar
+                    = usuario.isEmpty()
+                    && remitente.isEmpty()
+                    && password.length == 0;
+
+            if (sinConfigurar) {
+                return true;
+            }
+
+            if (usuario.isEmpty() || remitente.isEmpty()) {
+                jTabbedPane1.setSelectedComponent(jPanelCorreo);
+
+                javax.swing.JOptionPane.showMessageDialog(
+                        this,
+                        "Para configurar el correo debes indicar:\n"
+                        + "- La cuenta que recibe los mensajes.\n"
+                        + "- El remitente de los cuadrantes.\n\n"
+                        + "También puedes dejar todos los campos vacíos "
+                        + "si no vas a utilizar esta función.",
+                        "Configuración incompleta",
+                        javax.swing.JOptionPane.WARNING_MESSAGE
+                );
+
+                return false;
+            }
+
+            return true;
+
+        } finally {
+            java.util.Arrays.fill(password, '\0');
+        }
+    }
+    
+    private boolean guardarConfiguracionCorreo() {
+        char[] password = leerPasswordCorreo();
+
+        try {
+            ConfiguracionCorreo.guardar(
+                    txtCuentadeCorreoVal.getText().trim(),
+                    txtRemitenteVal.getText().trim(),
+                    password
+            );
+
+            return true;
+
+        } catch (java.util.prefs.BackingStoreException ex) {
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No se han podido guardar los ajustes de correo.",
+                    "Error al guardar",
+                    javax.swing.JOptionPane.ERROR_MESSAGE
+            );
+
+            return false;
+
+        } finally {
+            java.util.Arrays.fill(password, '\0');
+        }
+    }
     
     
     
@@ -107,6 +316,18 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         btnExaminarCredentials = new javax.swing.JButton();
         txtRutaCredentials = new javax.swing.JTextField();
         btnCerrarSesionGoogle = new javax.swing.JButton();
+        jPanelCorreo = new javax.swing.JPanel();
+        txtCuentadeCorreoVal = new javax.swing.JTextField();
+        txtServidorVal = new javax.swing.JTextField();
+        txtPuertoVal = new javax.swing.JTextField();
+        txtRemitenteVal = new javax.swing.JTextField();
+        lblCuentaDeCorreo = new javax.swing.JLabel();
+        lblContrasenha = new javax.swing.JLabel();
+        lblServidor = new javax.swing.JLabel();
+        lblPuerto = new javax.swing.JLabel();
+        lblRemitente = new javax.swing.JLabel();
+        btnProbarConexion = new javax.swing.JButton();
+        txtContrasenhaVal = new javax.swing.JPasswordField();
         btnGuardar = new javax.swing.JButton();
         btnCerrar = new javax.swing.JButton();
 
@@ -229,6 +450,89 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
 
         jTabbedPane1.addTab("Google Calendar", jPanelGoogleCalendar);
 
+        txtCuentadeCorreoVal.setMaximumSize(new java.awt.Dimension(250, 2147483647));
+        txtCuentadeCorreoVal.addActionListener(this::txtCuentadeCorreoValActionPerformed);
+
+        txtServidorVal.setMaximumSize(new java.awt.Dimension(250, 2147483647));
+        txtServidorVal.addActionListener(this::txtServidorValActionPerformed);
+
+        txtPuertoVal.setMaximumSize(new java.awt.Dimension(250, 2147483647));
+        txtPuertoVal.addActionListener(this::txtPuertoValActionPerformed);
+
+        txtRemitenteVal.setMaximumSize(new java.awt.Dimension(250, 2147483647));
+        txtRemitenteVal.addActionListener(this::txtRemitenteValActionPerformed);
+
+        lblCuentaDeCorreo.setText("Cuenta de correo:");
+
+        lblContrasenha.setText("Contraseña de aplicación:");
+
+        lblServidor.setText("Servidor:");
+
+        lblPuerto.setText("Puerto:");
+
+        lblRemitente.setText("Remitente del cuadrante:");
+
+        btnProbarConexion.setText("Probar conexión");
+        btnProbarConexion.addActionListener(this::btnProbarConexionActionPerformed);
+
+        txtContrasenhaVal.setText("jPasswordField1");
+
+        javax.swing.GroupLayout jPanelCorreoLayout = new javax.swing.GroupLayout(jPanelCorreo);
+        jPanelCorreo.setLayout(jPanelCorreoLayout);
+        jPanelCorreoLayout.setHorizontalGroup(
+            jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanelCorreoLayout.createSequentialGroup()
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPanelCorreoLayout.createSequentialGroup()
+                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(btnProbarConexion))
+                    .addGroup(jPanelCorreoLayout.createSequentialGroup()
+                        .addGap(39, 39, 39)
+                        .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(lblCuentaDeCorreo)
+                            .addComponent(lblContrasenha)
+                            .addComponent(lblServidor)
+                            .addComponent(lblPuerto)
+                            .addComponent(lblRemitente))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 35, Short.MAX_VALUE)
+                        .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                            .addComponent(txtServidorVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(txtCuentadeCorreoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(txtPuertoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(txtRemitenteVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(txtContrasenhaVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 220, Short.MAX_VALUE))))
+                .addGap(19, 19, 19))
+        );
+        jPanelCorreoLayout.setVerticalGroup(
+            jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelCorreoLayout.createSequentialGroup()
+                .addGap(27, 27, 27)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtCuentadeCorreoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblCuentaDeCorreo))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblContrasenha)
+                    .addComponent(txtContrasenhaVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtServidorVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblServidor))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtPuertoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblPuerto))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtRemitenteVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblRemitente))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 17, Short.MAX_VALUE)
+                .addComponent(btnProbarConexion)
+                .addContainerGap())
+        );
+
+        jTabbedPane1.addTab("Correo", jPanelCorreo);
+
         btnGuardar.setText("Guardar");
         btnGuardar.addActionListener(this::btnGuardarActionPerformed);
 
@@ -240,14 +544,14 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 449, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(0, 0, Short.MAX_VALUE))
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addContainerGap(268, Short.MAX_VALUE)
                 .addComponent(btnGuardar)
                 .addGap(18, 18, 18)
                 .addComponent(btnCerrar)
                 .addGap(27, 27, 27))
+            .addGroup(layout.createSequentialGroup()
+                .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 449, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(0, 0, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -277,6 +581,11 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     }//GEN-LAST:event_btnExaminarCredentialsActionPerformed
 
     private void btnGuardarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuardarActionPerformed
+        
+        if (!validarConfiguracionCorreo()) {
+            return;
+        }
+
         // --- 1. GUARDADO DE FESTIVOS ---
         if (tablaFestivos != null && tablaFestivos.isEditing()) {
             tablaFestivos.getCellEditor().stopCellEditing();
@@ -300,6 +609,10 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                         return; 
                     }
                 }
+            }
+            
+            if (!guardarConfiguracionCorreo()) {
+                return;
             }
             GestorFestivos.guardarFestivos(nuevosFestivos);
         }
@@ -350,6 +663,26 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         }
     }//GEN-LAST:event_btnCerrarSesionGoogleActionPerformed
 
+    private void txtCuentadeCorreoValActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtCuentadeCorreoValActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_txtCuentadeCorreoValActionPerformed
+
+    private void txtServidorValActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtServidorValActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_txtServidorValActionPerformed
+
+    private void txtPuertoValActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtPuertoValActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_txtPuertoValActionPerformed
+
+    private void txtRemitenteValActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtRemitenteValActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_txtRemitenteValActionPerformed
+
+    private void btnProbarConexionActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnProbarConexionActionPerformed
+        probarConexionCorreo();
+    }//GEN-LAST:event_btnProbarConexionActionPerformed
+
     /**
      * @param args the command line arguments
      */
@@ -393,16 +726,28 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     private javax.swing.JButton btnCerrarSesionGoogle;
     private javax.swing.JButton btnExaminarCredentials;
     private javax.swing.JButton btnGuardar;
+    private javax.swing.JButton btnProbarConexion;
     private javax.swing.JComboBox<String> cmbTemaConfig;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JPanel jPanelApariencia;
+    private javax.swing.JPanel jPanelCorreo;
     private javax.swing.JPanel jPanelGoogleCalendar;
     private javax.swing.JTabbedPane jTabbedPane1;
     private javax.swing.JLabel lblClientId;
     private javax.swing.JLabel lblClientSecret;
+    private javax.swing.JLabel lblContrasenha;
+    private javax.swing.JLabel lblCuentaDeCorreo;
+    private javax.swing.JLabel lblPuerto;
+    private javax.swing.JLabel lblRemitente;
+    private javax.swing.JLabel lblServidor;
     private javax.swing.JLabel lblTemaVisual;
     private javax.swing.JTextField txtClientId;
     private javax.swing.JTextField txtClientSecret;
+    private javax.swing.JPasswordField txtContrasenhaVal;
+    private javax.swing.JTextField txtCuentadeCorreoVal;
+    private javax.swing.JTextField txtPuertoVal;
+    private javax.swing.JTextField txtRemitenteVal;
     private javax.swing.JTextField txtRutaCredentials;
+    private javax.swing.JTextField txtServidorVal;
     // End of variables declaration//GEN-END:variables
 }

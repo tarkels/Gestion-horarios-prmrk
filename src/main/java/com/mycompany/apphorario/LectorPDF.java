@@ -9,6 +9,9 @@ import technology.tabula.PageIterator;
 import technology.tabula.Table;
 import technology.tabula.RectangularTextContainer;
 import technology.tabula.extractors.BasicExtractionAlgorithm;
+import technology.tabula.extractors.SpreadsheetExtractionAlgorithm;
+import technology.tabula.Page;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
@@ -36,11 +39,16 @@ public class LectorPDF {
         try (PDDocument document = Loader.loadPDF(archivoPdf)) {
             ObjectExtractor oe = new ObjectExtractor(document);
             BasicExtractionAlgorithm bea = new BasicExtractionAlgorithm();
+            SpreadsheetExtractionAlgorithm sea = new SpreadsheetExtractionAlgorithm();
             
             PageIterator it = oe.extract();
             List<Table> todasLasTablas = new ArrayList<>();
+            List<Table> tablasConCuadricula = new ArrayList<>();
             while (it.hasNext()) {
-                todasLasTablas.addAll(bea.extract(it.next()));
+                Page pagina = it.next();
+                // Conservamos Basic para las cabeceras y los formatos sin rejilla.
+                todasLasTablas.addAll(bea.extract(pagina));
+                tablasConCuadricula.addAll(sea.extract(pagina));
             }
 
             if (todasLasTablas.isEmpty()) {
@@ -50,6 +58,23 @@ public class LectorPDF {
             List<LocalDate> fechasSemana = extraerFechasTabula(todasLasTablas);
             if (fechasSemana.isEmpty()) {
                 throw new IOException("No se pudieron detectar las fechas de la semana en la cabecera.");
+            }
+
+            // La rejilla conserva en una sola fila nombres con varias líneas.
+            // No basta con que Spreadsheet devuelva alguna tabla: puede ser parcial.
+            List<RectangularTextContainer> filaCuadricula =
+                    buscarFilaEmpleado(tablasConCuadricula, empleado);
+            List<RectangularTextContainer> diasCuadricula =
+                    extraerSieteCeldasDeDia(filaCuadricula, empleado);
+            if (diasCuadricula != null) {
+                List<Float> centros = new ArrayList<>();
+                for (RectangularTextContainer celda : diasCuadricula) {
+                    centros.add((float) (celda.getLeft() + celda.getRight()) / 2f);
+                }
+                // Con Spreadsheet cada celda física contiene el día completo,
+                // aunque la cabecera del PDF diga IN/OUT.
+                return interpretarFormatoAUnificado(diasCuadricula, fechasSemana,
+                        centros, empleado.getId());
             }
 
             List<RectangularTextContainer> filaEmpleado = buscarFilaEmpleado(todasLasTablas, empleado);
@@ -68,6 +93,39 @@ public class LectorPDF {
         }
 
         return listaTurnos;
+    }
+
+    // Devuelve solo los siete días si la fila tiene una rejilla completa.
+    // Si no se puede verificar, se conserva el lector anterior como alternativa.
+    private static List<RectangularTextContainer> extraerSieteCeldasDeDia(
+            List<RectangularTextContainer> fila, Trabajador empleado) {
+        if (fila == null) return null;
+        String clave = normalizarTexto(empleado.getApellidos()).replace(" ", "");
+        if (clave.isEmpty()) return null;
+        int columnaNombre = -1;
+        for (int i = 0; i < fila.size(); i++) {
+            String texto = normalizarTexto(fila.get(i).getText()).replace(" ", "");
+            if (texto.contains(clave)) {
+                columnaNombre = i;
+                break;
+            }
+        }
+        if (columnaNombre < 0 || fila.size() - columnaNombre - 1 != 7) return null;
+        List<RectangularTextContainer> dias =
+                new ArrayList<>(fila.subList(columnaNombre + 1, fila.size()));
+        double derechaAnterior = fila.get(columnaNombre).getRight();
+        double top = dias.get(0).getTop();
+        double bottom = dias.get(0).getBottom();
+        for (RectangularTextContainer celda : dias) {
+            if (celda.getWidth() <= 0 || celda.getHeight() <= 0
+                    || Math.abs(celda.getLeft() - derechaAnterior) > 1.0
+                    || Math.abs(celda.getTop() - top) > 1.0
+                    || Math.abs(celda.getBottom() - bottom) > 1.0) {
+                return null;
+            }
+            derechaAnterior = celda.getRight();
+        }
+        return dias;
     }
 
     // --- DETECTOR DE FORMATO ---
@@ -254,7 +312,6 @@ public class LectorPDF {
 
     private static List<LocalDate> extraerFechasTabula(List<Table> tablas) {
         List<LocalDate> fechasEncontradas = new ArrayList<>();
-        int anioActual = LocalDate.now().getYear();
         Pattern pattern = Pattern.compile("(\\d{1,2})[/.](\\d{1,2})[/.](\\d{2,4})");
 
         for (Table tabla : tablas) {
@@ -266,8 +323,13 @@ public class LectorPDF {
                             int d = Integer.parseInt(m.group(1));
                             int mes = Integer.parseInt(m.group(2));
                             int a = Integer.parseInt(m.group(3));
-                            if (a < 100) a += 2000;
-                            if (a != anioActual) a = anioActual;
+
+                            // Los años de dos cifras se interpretan como 2000-2099.
+                            if (a < 100) {
+                                a += 2000;
+                            }
+
+                            // Conservamos el año indicado en el PDF.
                             fechasEncontradas.add(LocalDate.of(a, mes, d));
                         } catch (Exception ignored) {}
                     }

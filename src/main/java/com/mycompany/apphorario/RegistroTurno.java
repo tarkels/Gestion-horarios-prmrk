@@ -72,20 +72,30 @@ public class RegistroTurno {
     }    
     
     
+    // Minutos entre dos horas (con ajuste para turnos nocturnos)
+    private long minutosEntre(LocalTime entrada, LocalTime salida) {
+        long minutos = Duration.between(entrada, salida).toMinutes();
+        if (minutos < 0) minutos += 1440;
+        return minutos;
+    }
+
+    // DESCANSO EFECTIVO: el que corresponde al horario que se ha trabajado de verdad
+    public int calcularDescansoEfectivo() {
+        LocalTime entrada = getEntradaEfectiva();
+        LocalTime salida = getSalidaEfectiva();
+        if (entrada == null || salida == null) return 0;
+        long minutos = minutosEntre(entrada, salida);
+        // Si la jornada supera 6 horas, el descanso mínimo es 30 min
+        return (minutos > 360) ? Math.max(30, minutosDescanso) : minutosDescanso;
+    }
+
     // HORAS TOTALES TRABAJADAS EFECTIVAS (Para la JTable y la nómina)
     public double calcularHorasEfectivas() {
         LocalTime entrada = getEntradaEfectiva();
         LocalTime salida = getSalidaEfectiva();
-        
         if (entrada == null || salida == null) return 0.0;
-        
-        long minutos = Duration.between(entrada, salida).toMinutes();
-        if (minutos < 0) minutos += 1440; // Ajuste para turnos nocturnos
-        
-        // Recálculo dinámico: si la jornada supera 6 horas, el descanso mínimo es 30 min
-        int descanso = (minutos > 360) ? Math.max(30, minutosDescanso) : minutosDescanso;
-        
-        return Math.max(0, (minutos - descanso) / 60.0);
+        long minutos = minutosEntre(entrada, salida);
+        return Math.max(0, (minutos - calcularDescansoEfectivo()) / 60.0);
     }
 
     // HORAS PLANIFICADAS (Estrictamente para el contrato y el saldo de Irregulares)

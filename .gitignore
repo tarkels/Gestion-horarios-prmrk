@@ -20,3 +20,4 @@ credentials.json
 # Archivos de configuración local o preferencias de usuario (si usas alguno)
 festivos.txt
 config.properties
+setup.iss

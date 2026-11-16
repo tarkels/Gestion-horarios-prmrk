@@ -208,6 +208,7 @@ public class BaseDeDatos {
         public double horasComplNomina = 0.0;
         public int sabadosLibres = 0;
         public int festivosTrabajados = 0;
+        public int diasVacaciones = 0;
     }
     
     public static void actualizarHorasComplementarias(int empleadoId, String fechaStr, double horasCompl) {
@@ -258,7 +259,9 @@ public class BaseDeDatos {
     
     public static ResumenJornada calcularResumen(Trabajador empleado, String anioFiltro) {
         ResumenJornada resumen = new ResumenJornada();
-        if (empleado == null) return resumen;
+        if (empleado == null) {
+            return resumen;
+        }
 
         // Determinamos la ventana de cobro de la próxima nómina (del 23 al 22)
         java.time.LocalDate hoy = java.time.LocalDate.now();
@@ -273,13 +276,7 @@ public class BaseDeDatos {
             finNomina = hoy.plusMonths(1).withDayOfMonth(22);
         }
 
-        String sql = "SELECT * FROM registro_horas WHERE empleado_id = ?";
-        if (anioFiltro != null && !anioFiltro.equals("Todos")) {
-            sql += " AND fecha LIKE ?";
-        }
-        sql += " ORDER BY fecha ASC";
-
-        double horasPrevistasDiarias = 8.0; 
+        double horasPrevistasDiarias = 8.0;
         double jornadaSemanal = empleado.getJornadaSemanal();
 
         if (jornadaSemanal == 12.0 || jornadaSemanal == 30.0) {
@@ -288,104 +285,76 @@ public class BaseDeDatos {
             horasPrevistasDiarias = 5.0;
         }
 
-        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, empleado.getId());
-            
-            if (anioFiltro != null && !anioFiltro.equals("Todos")) {
-                pstmt.setString(2, anioFiltro + "-%");
+        // Ya no hay SQL aquí: pedimos la lista de turnos y la recorremos
+        for (RegistroTurno turno : obtenerTurnos(empleado.getId(), anioFiltro)) {
+
+            double horasCompl = turno.getHorasComplementarias();
+            double horasOriginales = turno.calcularHorasOriginales();
+
+            // CONDICIÓN CORREGIDA: Exclusivamente días NORMALES con horas planificadas válidas
+            if ("NORMAL".equals(turno.getTipoDia()) && horasOriginales > 0) {
+
+                // 1. Horas base planificadas (sin horas complementarias) para comparar con el contrato anual
+                resumen.horasTotalesTrabajadas += horasOriginales;
+                resumen.diasTrabajados++;
+
+                // 2. Control estricto de horas irregulares frente a la jornada diaria prevista
+                /**
+                 * Consultado con RRHH. Las horas irregulares solo se calculan
+                 * con los días trabajados no afectan festivos ni días libres
+                 * adicionales. Solo se calcula la diferencia con la jornada
+                 * prevista
+                 */
+                if (horasOriginales > horasPrevistasDiarias) {
+                    resumen.horasIrregularesPos += (horasOriginales - horasPrevistasDiarias);
+                } else if (horasOriginales < horasPrevistasDiarias) {
+                    resumen.horasIrregularesNeg += (horasPrevistasDiarias - horasOriginales);
+                }
             }
 
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while(rs.next()) {
-                    RegistroTurno turno = new RegistroTurno();
-                    turno.setEmpleadoId(rs.getInt("empleado_id"));
+            // Acumulador global de horas complementarias
+            resumen.horasComplementarias += horasCompl;
 
-                    String fechaStr = rs.getString("fecha");
-                    if (fechaStr != null) turno.setFecha(java.time.LocalDate.parse(fechaStr));
+            // Acumulador de horas complementarias para el periodo de cobro actual (del 23 al 22)
+            if (turno.getFecha() != null
+                    && !turno.getFecha().isBefore(inicioNomina)
+                    && !turno.getFecha().isAfter(finNomina)) {
+                resumen.horasComplNomina += horasCompl;
+            }
 
-                    turno.setDiaSemana(rs.getString("dia_semana"));
-                    
-                    String entradaStrDb = rs.getString("hora_entrada");
-                    if (entradaStrDb != null && !entradaStrDb.equals("null") && !entradaStrDb.isEmpty()) {
-                        turno.setHoraEntrada(java.time.LocalTime.parse(entradaStrDb));
-                    }
-
-                    String salidaStrDb = rs.getString("hora_salida");
-                    if (salidaStrDb != null && !salidaStrDb.equals("null") && !salidaStrDb.isEmpty()) {
-                        turno.setHoraSalida(java.time.LocalTime.parse(salidaStrDb));
-                    }                    
-                    
-                    String entradaRealStr = rs.getString("hora_entrada_real");
-                    if (entradaRealStr != null && !entradaRealStr.isEmpty()) {
-                        turno.setHoraEntradaReal(java.time.LocalTime.parse(entradaRealStr));
-                    }
-
-                    String salidaRealStr = rs.getString("hora_salida_real");
-                    if (salidaRealStr != null && !salidaRealStr.isEmpty()) {
-                        turno.setHoraSalidaReal(java.time.LocalTime.parse(salidaRealStr));
-                    }
-
-                    turno.setMinutosDescanso(rs.getInt("minutos_descanso"));
-                    turno.setHorasComplementarias(rs.getDouble("horas_complementarias"));
-                    turno.setTipoDia(rs.getString("tipo_dia"));
-                    turno.setObservaciones(rs.getString("observaciones"));
-
-                    double horasCompl = turno.getHorasComplementarias();
-                    double horasOriginales = turno.calcularHorasOriginales();
-
-                    // CONDICIÓN CORREGIDA: Exclusivamente días NORMALES con horas planificadas válidas
-                    if ("NORMAL".equals(turno.getTipoDia()) && horasOriginales > 0) {
-
-                        // 1. Horas base planificadas (sin horas complementarias) para comparar con el contrato anual
-                        resumen.horasTotalesTrabajadas += horasOriginales;
-                        resumen.diasTrabajados++;
-
-                        // 2. Control estricto de horas irregulares frente a la jornada diaria prevista
-                        if (horasOriginales > horasPrevistasDiarias) {
-                            resumen.horasIrregularesPos += (horasOriginales - horasPrevistasDiarias);
-                        } else if (horasOriginales < horasPrevistasDiarias) {
-                            resumen.horasIrregularesNeg += (horasPrevistasDiarias - horasOriginales);
-                        }
-                    }
-
-                    // Acumulador global de horas complementarias
-                    resumen.horasComplementarias += horasCompl;
-
-                    // Acumulador de horas complementarias para el periodo de cobro actual (del 23 al 22)
-                    if (turno.getFecha() != null && 
-                       !turno.getFecha().isBefore(inicioNomina) && 
-                       !turno.getFecha().isAfter(finNomina)) {
-                        resumen.horasComplNomina += horasCompl;
-                    }
-
-                    // Recuento de sábados libres (excluyendo días de vacaciones)
-                    if (turno.getFecha() != null && turno.getFecha().getDayOfWeek() == java.time.DayOfWeek.SATURDAY) {
-                        if (!"VACACIONES".equals(turno.getTipoDia())) {
-                            if ("LIBRE".equals(turno.getTipoDia()) || turno.getHoraEntrada() == null) {
-                                resumen.sabadosLibres++;
-                            }
-                        }
-                    }
-                    
-                    // Festivos y Domingos trabajados
-                    if ("NORMAL".equals(turno.getTipoDia()) && turno.getHoraEntrada() != null && turno.getFecha() != null) {
-                        boolean esDomingo = (turno.getFecha().getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
-                        boolean esFestivoFichero = GestorFestivos.esFestivo(turno.getFecha()); 
-
-                        if (esDomingo || esFestivoFichero) {
-                            resumen.festivosTrabajados++;
-                        }
+            // Recuento de sábados libres (excluyendo días de vacaciones)
+            if (turno.getFecha() != null && turno.getFecha().getDayOfWeek() == java.time.DayOfWeek.SATURDAY) {
+                if (!"VACACIONES".equals(turno.getTipoDia())) {
+                    if ("LIBRE".equals(turno.getTipoDia()) || turno.getHoraEntrada() == null) {
+                        resumen.sabadosLibres++;
                     }
                 }
-            }           
-        } catch (SQLException e) {
-            System.out.println("Error al calcular el resumen de la jornada: " + e.getMessage());
+            }
+
+            // Festivos y Domingos trabajados
+            if ("NORMAL".equals(turno.getTipoDia()) && turno.getHoraEntrada() != null && turno.getFecha() != null) {
+                boolean esDomingo = (turno.getFecha().getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
+                boolean esFestivoFichero = GestorFestivos.esFestivo(turno.getFecha());
+
+                if (esDomingo || esFestivoFichero) {
+                    resumen.festivosTrabajados++;
+                }
+            }
+
+            // Dias de vacaciones asignados
+            if ("VACACIONES".equals(turno.getTipoDia())) {
+                resumen.diasVacaciones++;
+            }
+
         }
 
+        // Calculo del porcentaje anual de horas irregulares
+        /* Consultado con RRHH. Según el estatuto de los trabajadores el máximos de horas irregulares es el 10% de las horas anuales
+         * Pero esto incluye las positivas y las negativas. Primark calcula el porcentaje solo hasta el 5% y solo con las positivas.
+         */
         resumen.saldoIrregulares = resumen.horasIrregularesPos - resumen.horasIrregularesNeg;
         if (empleado.getHorasAnuales() > 0) {
-            double mayorIrregular = Math.max(resumen.horasIrregularesPos, resumen.horasIrregularesNeg);
-            resumen.porcentajeIrregulares = (mayorIrregular / empleado.getHorasAnuales()) * 100;
+            resumen.porcentajeIrregulares = (resumen.horasIrregularesPos / empleado.getHorasAnuales()) * 100;
         }
 
         return resumen;
@@ -394,54 +363,97 @@ public class BaseDeDatos {
     
     // Extrae todos los turnos del año seleccionado para exportarlos (Para la conexión con CALENDAR)
     public static java.util.List<RegistroTurno> obtenerTurnosParaExportar(int empleadoId, String anioFiltro) {
+        return obtenerTurnos(empleadoId, anioFiltro);
+    }
+    
+    // Convierte el texto guardado en SQLite en una hora (o null si no hay hora)
+    private static java.time.LocalTime parseHora(String texto) {
+        if (texto == null || texto.isEmpty() || texto.equals("null")) return null;
+        return java.time.LocalTime.parse(texto);
+    }
+
+    // Convierte la fila ACTUAL de un ResultSet en un objeto RegistroTurno.
+    // Es el único sitio del programa donde se leen las columnas de registro_horas.
+    private static RegistroTurno mapearTurno(ResultSet rs) throws SQLException {
+        RegistroTurno turno = new RegistroTurno();
+        turno.setEmpleadoId(rs.getInt("empleado_id"));
+        String fechaStr = rs.getString("fecha");
+        if (fechaStr != null) turno.setFecha(LocalDate.parse(fechaStr));
+        turno.setDiaSemana(rs.getString("dia_semana"));
+        turno.setHoraEntrada(parseHora(rs.getString("hora_entrada")));
+        turno.setHoraSalida(parseHora(rs.getString("hora_salida")));
+        turno.setHoraEntradaReal(parseHora(rs.getString("hora_entrada_real")));
+        turno.setHoraSalidaReal(parseHora(rs.getString("hora_salida_real")));
+        turno.setMinutosDescanso(rs.getInt("minutos_descanso"));
+        turno.setHorasComplementarias(rs.getDouble("horas_complementarias"));
+        turno.setTipoDia(rs.getString("tipo_dia"));
+        turno.setObservaciones(rs.getString("observaciones"));
+        return turno;
+    }
+
+    // Devuelve todos los turnos de un empleado, filtrados por año ("Todos" = sin filtro)
+    public static java.util.List<RegistroTurno> obtenerTurnos(int empleadoId, String anioFiltro) {
         java.util.List<RegistroTurno> turnos = new java.util.ArrayList<>();
-        
+        boolean filtrarAnio = (anioFiltro != null && !anioFiltro.equals("Todos"));
+
         String sql = "SELECT * FROM registro_horas WHERE empleado_id = ?";
-        if (anioFiltro != null && !anioFiltro.equals("Todos")) {
-            sql += " AND fecha LIKE ?";
-        }
+        if (filtrarAnio) sql += " AND fecha LIKE ?";
         sql += " ORDER BY fecha ASC";
 
         try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, empleadoId);
-            
-            if (anioFiltro != null && !anioFiltro.equals("Todos")) {
-                pstmt.setString(2, anioFiltro + "-%");
-            }
-
+            if (filtrarAnio) pstmt.setString(2, anioFiltro + "-%");
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    RegistroTurno turno = new RegistroTurno();
-                    turno.setEmpleadoId(rs.getInt("empleado_id"));
-                    
-                    String fechaStr = rs.getString("fecha");
-                    if (fechaStr != null) turno.setFecha(java.time.LocalDate.parse(fechaStr));
-
-                    // Entrada y Salida Originales
-                    String entStr = rs.getString("hora_entrada");
-                    if (entStr != null && !entStr.equals("null") && !entStr.isEmpty()) turno.setHoraEntrada(java.time.LocalTime.parse(entStr));
-                    
-                    String salStr = rs.getString("hora_salida");
-                    if (salStr != null && !salStr.equals("null") && !salStr.isEmpty()) turno.setHoraSalida(java.time.LocalTime.parse(salStr));
-                    
-                    // Entrada y Salida Reales
-                    String entReal = rs.getString("hora_entrada_real");
-                    if (entReal != null && !entReal.isEmpty()) turno.setHoraEntradaReal(java.time.LocalTime.parse(entReal));
-                    
-                    String salReal = rs.getString("hora_salida_real");
-                    if (salReal != null && !salReal.isEmpty()) turno.setHoraSalidaReal(java.time.LocalTime.parse(salReal));
-
-                    turno.setTipoDia(rs.getString("tipo_dia"));
-                    turno.setObservaciones(rs.getString("observaciones"));
-
-                    turnos.add(turno);
+                    turnos.add(mapearTurno(rs));
                 }
             }
         } catch (SQLException e) {
-            System.out.println("Error al obtener turnos para exportar: " + e.getMessage());
+            System.out.println("Error al obtener los turnos: " + e.getMessage());
         }
         return turnos;
     }
+
+    // Lee UN turno concreto de la base de datos (o null si no existe)
+    public static RegistroTurno obtenerTurno(int empleadoId, LocalDate fecha) {
+        String sql = "SELECT * FROM registro_horas WHERE empleado_id = ? AND fecha = ?";
+        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, empleadoId);
+            pstmt.setString(2, fecha.toString());
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return mapearTurno(rs);
+            }
+        } catch (SQLException e) {
+            System.out.println("Error al obtener el turno: " + e.getMessage());
+        }
+        return null;
+    }
+
+    // Guarda los cambios hechos A MANO en un turno que ya existe.
+    // A diferencia de guardarOActualizarTurno(), NO borra las horas reales ni las complementarias.
+    public static void actualizarTurnoManual(RegistroTurno turno) {
+        String sql = "UPDATE registro_horas SET "
+                + "hora_entrada = ?, hora_salida = ?, "
+                + "hora_entrada_real = ?, hora_salida_real = ?, "
+                + "minutos_descanso = ?, horas_complementarias = ?, "
+                + "tipo_dia = ?, observaciones = ? "
+                + "WHERE empleado_id = ? AND fecha = ?";
+        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, turno.getHoraEntrada() != null ? turno.getHoraEntrada().toString() : null);
+            pstmt.setString(2, turno.getHoraSalida() != null ? turno.getHoraSalida().toString() : null);
+            pstmt.setString(3, turno.getHoraEntradaReal() != null ? turno.getHoraEntradaReal().toString() : null);
+            pstmt.setString(4, turno.getHoraSalidaReal() != null ? turno.getHoraSalidaReal().toString() : null);
+            pstmt.setInt(5, turno.getMinutosDescanso());
+            pstmt.setDouble(6, turno.getHorasComplementarias());
+            pstmt.setString(7, turno.getTipoDia());
+            pstmt.setString(8, turno.getObservaciones());
+            pstmt.setInt(9, turno.getEmpleadoId());
+            pstmt.setString(10, turno.getFecha().toString());
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("Error al actualizar el turno manualmente: " + e.getMessage());
+        }
+    } 
     
 }
 

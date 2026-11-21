@@ -59,4 +59,10 @@ public final class ConfiguracionCorreo {
         Arrays.fill(passwordSesion, '\0');
         passwordSesion = new char[0];
     }
+    
+    /** Guarda la contraseña solo en memoria, sin tocar las preferencias. */
+    public static synchronized void setPasswordSesion(char[] password) {
+        Arrays.fill(passwordSesion, '\0');
+        passwordSesion = password.clone();
+}
 }

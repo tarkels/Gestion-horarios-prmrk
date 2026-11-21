@@ -151,27 +151,28 @@ public class BaseDeDatos {
         String salidaStr = (turno.getHoraSalida() != null) ? turno.getHoraSalida().toString() : null;
 
         if (existe) {
-            // AL REIMPORTAR EL PDF: Actualizamos el horario base oficial del PDF y 
-            // FORZAMOS a limpiar las horas reales a NULL y las complementarias a 0.0 
-            // para eliminar cualquier marca o edición manual anterior.
+            // Actualizamos únicamente los datos del horario planificado.
+            // Conservamos las horas reales y las complementarias existentes.
             String sqlUpdate = "UPDATE registro_horas SET "
                     + "hora_entrada = ?, hora_salida = ?, minutos_descanso = ?, "
-                    + "tipo_dia = ?, observaciones = ?, "
-                    + "hora_entrada_real = NULL, hora_salida_real = NULL, "
-                    + "horas_complementarias = 0.0 "
+                    + "tipo_dia = ? "
                     + "WHERE empleado_id = ? AND fecha = ?";
 
             try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sqlUpdate)) {
+
                 pstmt.setString(1, entradaStr);
                 pstmt.setString(2, salidaStr);
                 pstmt.setInt(3, turno.getMinutosDescanso());
                 pstmt.setString(4, turno.getTipoDia());
-                pstmt.setString(5, turno.getObservaciones());
-                pstmt.setInt(6, turno.getEmpleadoId());
-                pstmt.setString(7, turno.getFecha().toString());
+                pstmt.setInt(5, turno.getEmpleadoId());
+                pstmt.setString(6, turno.getFecha().toString());
+
                 pstmt.executeUpdate();
+
             } catch (SQLException e) {
-                System.out.println("Error al actualizar turno desde PDF: " + e.getMessage());
+                System.out.println(
+                        "Error al actualizar turno desde PDF: " + e.getMessage()
+                );
             }
         } else {
             // INSERT para nuevos turnos que no existían en la BDD
@@ -201,8 +202,6 @@ public class BaseDeDatos {
         public double horasTotalesTrabajadas = 0.0;
         public int diasTrabajados = 0;
         public double horasIrregularesPos = 0.0;
-        public double horasIrregularesNeg = 0.0;
-        public double saldoIrregulares =0.0;
         public double porcentajeIrregulares = 0.0;
         public double horasComplementarias = 0.0;
         public double horasComplNomina = 0.0;
@@ -307,9 +306,7 @@ public class BaseDeDatos {
                  */
                 if (horasOriginales > horasPrevistasDiarias) {
                     resumen.horasIrregularesPos += (horasOriginales - horasPrevistasDiarias);
-                } else if (horasOriginales < horasPrevistasDiarias) {
-                    resumen.horasIrregularesNeg += (horasPrevistasDiarias - horasOriginales);
-                }
+                } 
             }
 
             // Acumulador global de horas complementarias
@@ -352,7 +349,7 @@ public class BaseDeDatos {
         /* Consultado con RRHH. Según el estatuto de los trabajadores el máximos de horas irregulares es el 10% de las horas anuales
          * Pero esto incluye las positivas y las negativas. Primark calcula el porcentaje solo hasta el 5% y solo con las positivas.
          */
-        resumen.saldoIrregulares = resumen.horasIrregularesPos - resumen.horasIrregularesNeg;
+        
         if (empleado.getHorasAnuales() > 0) {
             resumen.porcentajeIrregulares = (resumen.horasIrregularesPos / empleado.getHorasAnuales()) * 100;
         }
@@ -429,8 +426,9 @@ public class BaseDeDatos {
         return null;
     }
 
-    // Guarda los cambios hechos A MANO en un turno que ya existe.
-    // A diferencia de guardarOActualizarTurno(), NO borra las horas reales ni las complementarias.
+    // Guarda las modificaciones realizadas manualmente en un turno existente.
+    // Permite editar también las horas reales, complementarias y observaciones.
+    // La importación desde PDF conserva esos datos manuales.
     public static void actualizarTurnoManual(RegistroTurno turno) {
         String sql = "UPDATE registro_horas SET "
                 + "hora_entrada = ?, hora_salida = ?, "
@@ -454,6 +452,50 @@ public class BaseDeDatos {
             System.out.println("Error al actualizar el turno manualmente: " + e.getMessage());
         }
     } 
+    
+    /**
+     * Elimina el registro completo de un empleado en una fecha.
+     *
+     * @return true si se ha eliminado el registro; false si no existía.
+     * @throws IllegalArgumentException si los datos no son válidos.
+     * @throws SQLException si falla la conexión o el borrado.
+     */
+    public static boolean eliminarTurno(int empleadoId, LocalDate fecha)
+            throws SQLException {
+
+        if (empleadoId <= 0) {
+            throw new IllegalArgumentException(
+                    "El identificador del empleado debe ser mayor que cero."
+            );
+        }
+
+        if (fecha == null) {
+            throw new IllegalArgumentException(
+                    "Debes indicar la fecha del registro que quieres eliminar."
+            );
+        }
+
+        String sql = "DELETE FROM registro_horas "
+                + "WHERE empleado_id = ? AND fecha = ?";
+
+        try (Connection conn = conectar()) {
+
+            if (conn == null) {
+                throw new SQLException(
+                        "No se ha podido establecer la conexión con la base de datos."
+                );
+            }
+
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setInt(1, empleadoId);
+                pstmt.setString(2, fecha.toString());
+
+                int filasEliminadas = pstmt.executeUpdate();
+
+                return filasEliminadas == 1;
+            }
+        }
+    }
     
 }
 

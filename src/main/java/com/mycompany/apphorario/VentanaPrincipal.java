@@ -12,10 +12,13 @@ import java.sql.SQLException;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsEnvironment;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import javax.swing.JScrollPane;
+
+
 
 /**
  *
@@ -44,9 +47,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         
         //Cargamos los años en el combobox antes de calcular el primer resumen
         cargarAniosEnFiltro();
-        
-        //Adaptar a resolución pantalla
-        adaptarVentanaAPantalla();
         
         //Hacer invisibles los inconos de aviso del resumen
         lblAvisoDiasTrabajoMaximos.setVisible(false); // Oculto por defecto
@@ -101,13 +101,82 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
                 return c;
             }
+           
         };
 
         // Aplicar el renderizador a las columnas Entrada (2), Salida (3) y Compl. (h) (6)
         tablaTurnos.getColumnModel().getColumn(2).setCellRenderer(rendererPersonalizado);
         tablaTurnos.getColumnModel().getColumn(3).setCellRenderer(rendererPersonalizado);
         tablaTurnos.getColumnModel().getColumn(6).setCellRenderer(rendererPersonalizado);
+        
+        //Adaptar a resolución pantalla
+        adaptarVentanaAPantalla();
+        
     }
+    
+    
+    /**
+     * Ajusta la ventana al espacio útil de la pantalla y añade barras de
+     * desplazamiento cuando el contenido no cabe. Debe llamarse al FINAL del
+     * constructor, después de initComponents().
+     */
+    private void adaptarVentanaAPantalla() {
+        // 0. Protección: si ya se aplicó, no volver a envolver el contenido.
+        if (getContentPane() instanceof JScrollPane) {
+            return;
+        }
+
+        // 1. Recuperar el contenido creado por NetBeans.
+        Container contenido = getContentPane();
+
+        // 2. Colocarlo dentro de un contenedor con desplazamiento.
+        JScrollPane scrollGeneral = new JScrollPane(
+                contenido,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        );
+        scrollGeneral.getVerticalScrollBar().setUnitIncrement(20);
+        scrollGeneral.getHorizontalScrollBar().setUnitIncrement(20);
+
+        setContentPane(scrollGeneral);
+        setResizable(true);
+
+        // 3. Calcular el tamaño que necesita el contenido.
+        pack();
+
+        // 4. Obtener los límites del monitor donde está la ventana.
+        GraphicsConfiguration configuracion = getGraphicsConfiguration();
+        if (configuracion == null) {
+            configuracion = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice()
+                    .getDefaultConfiguration();
+        }
+        Rectangle espacioUtil = new Rectangle(configuracion.getBounds());
+
+        // 5. Descontar barra de tareas y otras zonas reservadas.
+        Insets margenes = Toolkit.getDefaultToolkit().getScreenInsets(configuracion);
+        espacioUtil.x += margenes.left;
+        espacioUtil.y += margenes.top;
+        espacioUtil.width -= margenes.left + margenes.right;
+        espacioUtil.height -= margenes.top + margenes.bottom;
+
+        // 6. Permitir que la ventana sea más pequeña que su contenido.
+        setMinimumSize(new Dimension(0, 0));
+
+        // 7. Limitar el tamaño al espacio disponible.
+        int ancho = Math.min(getWidth(), espacioUtil.width);
+        int alto = Math.min(getHeight(), espacioUtil.height);
+        setSize(ancho, alto);
+
+        // 8. Centrar dentro del espacio útil.
+        setLocation(
+                espacioUtil.x + (espacioUtil.width - ancho) / 2,
+                espacioUtil.y + (espacioUtil.height - alto) / 2
+        );
+    }
+
+    
+    
     
     
     private void cargarDatosEmpleado() {
@@ -123,6 +192,8 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         }
     }
     
+    
+    //Código para poblar la tabla de turnos en la ventana principal
     public void cargarTurnosEnTabla() {
         javax.swing.table.DefaultTableModel modelo = (javax.swing.table.DefaultTableModel) tablaTurnos.getModel();
         modelo.setRowCount(0); // Limpiamos las filas actuales
@@ -217,6 +288,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         }  
     }
     
+    // Código para filtrar por año las estádisticas resumen
     private void cargarAniosEnFiltro() {
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
         if (empleado == null) return;
@@ -241,7 +313,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         }
     }
     
-    
+    // Función para calcular las estadísticas resumen una vez está el año seleccionado
     public void actualizarPanelResumen() {
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
         if (empleado == null) return;
@@ -259,8 +331,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblDiasTrabajadosVal.setText(String.valueOf(resumen.diasTrabajados));
 
         lblHorasIrregularesPosVal.setText(String.format("%.2f h", resumen.horasIrregularesPos));
-        lblHorasIrregularesNegVal.setText(String.format("%.2f h", resumen.horasIrregularesNeg));
-        lblSaldoIrregularesVal.setText(String.format("%.2f h", resumen.saldoIrregulares));
 
         lblPorcentajeHorasIrregularesVal.setText(String.format("%.2f %%", resumen.porcentajeIrregulares));
         lblHorasComplementariasVal.setText(String.format("%.2f h", resumen.horasComplementarias));
@@ -307,6 +377,91 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                 */
     }
     
+    
+
+    private int mostrarEditorConEliminar(Object formulario, RegistroTurno turno) {
+
+        java.time.LocalDate fecha = turno.getFecha();
+        String fechaVisible = fecha.format(
+                java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+
+        Object[] opciones = {"Eliminar día…", "Cancelar", "Guardar cambios"};
+
+        while (true) {
+            int opcion = javax.swing.JOptionPane.showOptionDialog(
+                    this, formulario, "Editar Registro - " + fecha,
+                    javax.swing.JOptionPane.DEFAULT_OPTION,
+                    javax.swing.JOptionPane.PLAIN_MESSAGE,
+                    null, opciones, opciones[2]);
+
+            if (opcion == 2) {
+                return javax.swing.JOptionPane.OK_OPTION;      // Guardar
+            }
+            if (opcion != 0) {
+                return javax.swing.JOptionPane.CANCEL_OPTION;  // Cancelar o X
+            }
+
+            // Resumen de lo que se va a perder (valores guardados, no los editados)
+            String planificado = turno.getHoraEntrada() != null && turno.getHoraSalida() != null
+                    ? turno.getHoraEntrada() + " - " + turno.getHoraSalida()
+                    : "sin horario";
+            String real = turno.getHoraEntradaReal() != null || turno.getHoraSalidaReal() != null
+                    ? turno.getEntradaEfectiva() + " - " + turno.getSalidaEfectiva()
+                    : "sin horario real";
+
+            Object[] opcionesConf = {"Cancelar", "Eliminar registro"};
+            int conf = javax.swing.JOptionPane.showOptionDialog(this,
+                    "¿Eliminar el registro del " + fechaVisible + "?\n\n"
+                    + "Tipo de día: " + turno.getTipoDia() + "\n"
+                    + "Horario planificado: " + planificado + "\n"
+                    + "Horario real: " + real + "\n"
+                    + "Complementarias: " + String.format("%.2f", turno.getHorasComplementarias()) + " h\n\n"
+                    + "Se eliminarán también las observaciones.\n"
+                    + "Esta acción no se puede deshacer desde la aplicación.",
+                    "Confirmar eliminación",
+                    javax.swing.JOptionPane.DEFAULT_OPTION,
+                    javax.swing.JOptionPane.WARNING_MESSAGE,
+                    null, opcionesConf, opcionesConf[0]);
+
+            if (conf != 1) {
+                continue; // Volver al editor conservando lo escrito
+            }
+
+            boolean eliminado;
+            try {
+                eliminado = BaseDeDatos.eliminarTurno(turno.getEmpleadoId(), fecha);
+            } catch (java.sql.SQLException ex) {
+                javax.swing.JOptionPane.showMessageDialog(this,
+                        "No se ha podido eliminar el registro.\nDetalle: " + ex.getMessage(),
+                        "Error de base de datos", javax.swing.JOptionPane.ERROR_MESSAGE);
+                continue;
+            }
+
+            cargarAniosEnFiltro();
+            cargarTurnosEnTabla();
+            actualizarPanelResumen();
+
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    eliminado
+                            ? "Se ha eliminado el registro del " + fechaVisible + "."
+                            : "El registro del " + fechaVisible + " ya no existía en la base de datos.",
+                    eliminado ? "Registro eliminado" : "Registro no encontrado",
+                    eliminado ? javax.swing.JOptionPane.INFORMATION_MESSAGE
+                            : javax.swing.JOptionPane.WARNING_MESSAGE);
+
+            return javax.swing.JOptionPane.CANCEL_OPTION; // No continuar con el guardado
+        }
+    }
+    
+    private void mostrarInformacionResumen(String titulo, String mensaje) {
+        javax.swing.JOptionPane.showMessageDialog(
+                this,
+                mensaje,
+                titulo,
+                javax.swing.JOptionPane.INFORMATION_MESSAGE
+        );
+    }
+    
     // Código para cambiar la apariencia de la interfaz con Flatlaf
     // Nota: Si en el futuro se añaden más temas (como IntelliJ o macOS), solo hay que añadir un nuevo case a este bloque.
     void cambiarTema(String tema) {
@@ -344,54 +499,291 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         }
         return java.time.LocalTime.parse(t);
     }
-
     
-    //Metodo para adaptar la aplicación a resoluciones más pequeñas
-    private void adaptarVentanaAPantalla() {
-        // Conservamos el contenido creado por NetBeans.
-        Container contenido = getContentPane();
+    // ------------------------------------------------------------------
+    // Importación desde el correo
+    // ------------------------------------------------------------------
 
-        JScrollPane scrollGeneral = new JScrollPane(
-                contenido,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-        );
+    /**
+     * Comprueba los requisitos, pide la contraseña si hace falta y lanza la
+     * importación en segundo plano para que la ventana no se congele.
+     */
+    private void sincronizarCorreo() {
+        final Trabajador empleado = BaseDeDatos.obtenerEmpleado();
+        if (empleado == null) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Primero debes guardar los datos del trabajador.",
+                    "Empleado no encontrado",
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-        scrollGeneral.getVerticalScrollBar().setUnitIncrement(20);
-        scrollGeneral.getHorizontalScrollBar().setUnitIncrement(20);
+        final String usuario = ConfiguracionCorreo.getUsuario();
+        final String remitente = ConfiguracionCorreo.getRemitente();
+        if (usuario.isBlank() || remitente.isBlank()) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Configura la cuenta de correo y el remitente del cuadrante\n"
+                    + "en Configuración > Correo.",
+                    "Correo sin configurar",
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-        setContentPane(scrollGeneral);
-        setResizable(true);
+        //Usa el método para obtener la contraseña dependiendo de si ya está guardada, o hay que pedirla
+        final char[] password = obtenerPasswordCorreo(usuario);
+        
+       
+        if (password == null) {
+            return; // El usuario ha cancelado.
+        }
+        ConfiguracionCorreo.setPasswordSesion(password);
 
-        // Calculamos el tamaño que necesita el contenido.
-        pack();
+        final String textoBoton = btnSincronizarCorreo.getText();
+        btnSincronizarCorreo.setEnabled(false);
+        btnSincronizarCorreo.setText("Sincronizando...");
+        setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
 
-        // Obtenemos el espacio útil del monitor de la ventana.
-        GraphicsConfiguration configuracion = getGraphicsConfiguration();
-        Rectangle espacioUtil = new Rectangle(configuracion.getBounds());
+        new javax.swing.SwingWorker<ImportadorCorreo.Resultado, Void>() {
 
-        Insets margenes = Toolkit.getDefaultToolkit()
-                .getScreenInsets(configuracion);
+            @Override
+            protected ImportadorCorreo.Resultado doInBackground() throws Exception {
+                // Fuera del hilo de Swing: conexión, PDF y base de datos.
+                try {
+                    return ImportadorCorreo.importar(
+                            empleado, usuario, password, remitente);
 
-        espacioUtil.x += margenes.left;
-        espacioUtil.y += margenes.top;
-        espacioUtil.width -= margenes.left + margenes.right;
-        espacioUtil.height -= margenes.top + margenes.bottom;
+                } catch (javax.mail.AuthenticationFailedException ex) {
 
-        // No imponemos un mínimo superior a la pantalla disponible.
-        setMinimumSize(new Dimension(0, 0));
+                    ConfiguracionCorreo.olvidarPassword();
 
-        int ancho = Math.min(getWidth(), espacioUtil.width);
-        int alto = Math.min(getHeight(), espacioUtil.height);
+                    if (AlmacenCredencialesCorreo.disponible()) {
+                        try {
+                            AlmacenCredencialesCorreo.eliminar(usuario);
 
-        setSize(ancho, alto);
+                        } catch (RuntimeException errorBorrado) {
+                            ex.addSuppressed(errorBorrado);
 
-        // Centramos dentro del espacio útil de ese monitor.
-        setLocation(
-                espacioUtil.x + (espacioUtil.width - ancho) / 2,
-                espacioUtil.y + (espacioUtil.height - alto) / 2
-        );
+                            logger.log(
+                                    java.util.logging.Level.WARNING,
+                                    "No se pudo eliminar la credencial rechazada",
+                                    errorBorrado);
+                        }
+                    }
+                    throw ex;
+                } finally {
+                    java.util.Arrays.fill(password, '\0');
+                }
+            }
+
+            @Override
+            protected void done() {
+                // De vuelta en el hilo de Swing: ya podemos tocar la interfaz.
+                btnSincronizarCorreo.setEnabled(true);
+                btnSincronizarCorreo.setText(textoBoton);
+                setCursor(java.awt.Cursor.getDefaultCursor());
+
+                try {
+                    ImportadorCorreo.Resultado resultado = get();
+                    cargarAniosEnFiltro();
+                    cargarTurnosEnTabla();
+                    actualizarPanelResumen();
+                    mostrarResultadoCorreo(resultado);
+
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    mostrarErrorCorreo(ex.getCause());
+                }
+            }
+        }.execute();
     }
+
+    /** Devuelve la contraseña escrita o null si se cancela. */
+    private char[] pedirPasswordCorreo(String usuario) {
+
+        javax.swing.JPasswordField campo
+                = new javax.swing.JPasswordField(20);
+
+        javax.swing.JCheckBox recordar
+                = new javax.swing.JCheckBox(
+                        "Recordar contraseña en este equipo");
+
+        boolean disponible
+                = AlmacenCredencialesCorreo.disponible();
+
+        recordar.setEnabled(disponible);
+
+        Object[] contenido = {
+            "Contraseña de aplicación de " + usuario + ":",
+            campo,
+            recordar,
+            disponible
+            ? "Si no marcas la casilla, solo se conservará "
+            + "durante esta sesión."
+            : "En este sistema solo se conservará "
+            + "durante esta sesión."
+        };
+
+        int opcion = javax.swing.JOptionPane.showConfirmDialog(
+                this,
+                contenido,
+                "Acceso al correo",
+                javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                javax.swing.JOptionPane.QUESTION_MESSAGE);
+
+        char[] escrita = campo.getPassword();
+        campo.setText("");
+
+        try {
+            if (opcion != javax.swing.JOptionPane.OK_OPTION) {
+                return null;
+            }
+
+            int longitud = 0;
+
+            for (char caracter : escrita) {
+                if (!Character.isWhitespace(caracter)) {
+                    longitud++;
+                }
+            }
+
+            if (longitud == 0) {
+                return null;
+            }
+
+            char[] password = new char[longitud];
+            int posicion = 0;
+
+            for (char caracter : escrita) {
+                if (!Character.isWhitespace(caracter)) {
+                    password[posicion++] = caracter;
+                }
+            }
+
+            if (recordar.isSelected() && disponible) {
+                try {
+                    AlmacenCredencialesCorreo.guardar(
+                            usuario, password);
+
+                } catch (RuntimeException ex) {
+                    logger.log(
+                            java.util.logging.Level.WARNING,
+                            "No se pudo guardar la credencial del correo",
+                            ex);
+
+                    javax.swing.JOptionPane.showMessageDialog(
+                            this,
+                            "No se pudo guardar la contraseña "
+                            + "en Windows.\n"
+                            + "Se utilizará únicamente durante "
+                            + "esta sesión.\n\n"
+                            + ex.getMessage(),
+                            "Contraseña no guardada",
+                            javax.swing.JOptionPane.WARNING_MESSAGE);
+                }
+            }
+
+            return password;
+
+        } finally {
+            java.util.Arrays.fill(escrita, '\0');
+        }
+    }
+
+    private void mostrarResultadoCorreo(ImportadorCorreo.Resultado r) {
+        if (!r.hayNovedades()) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    r.getMensajesCoincidentes() == 0
+                            ? "No se ha encontrado ningún correo de cuadrantes del remitente configurado."
+                            : "No hay cuadrantes nuevos. Todos los correos ya estaban importados.",
+                    "Sincronización completada",
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        StringBuilder texto = new StringBuilder();
+        texto.append("Cuadrantes importados: ").append(r.getArchivosImportados()).append('\n');
+        texto.append("Turnos guardados: ").append(r.getTurnosImportados()).append('\n');
+        if (r.getDuplicados() > 0) {
+            texto.append("PDF repetidos omitidos: ").append(r.getDuplicados()).append('\n');
+        }
+
+        int tipo = javax.swing.JOptionPane.INFORMATION_MESSAGE;
+        if (!r.getErrores().isEmpty()) {
+            tipo = javax.swing.JOptionPane.WARNING_MESSAGE;
+            texto.append("\nNo se pudieron importar (se reintentarán la próxima vez):\n");
+            for (String error : r.getErrores()) {
+                texto.append("- ").append(error).append('\n');
+            }
+        }
+        texto.append("\nLos PDF originales están en la carpeta 'Rotas'.");
+
+        javax.swing.JOptionPane.showMessageDialog(this, texto.toString(),
+                "Sincronización completada", tipo);
+    }
+
+    private void mostrarErrorCorreo(Throwable causa) {
+        String mensaje;
+        if (causa instanceof javax.mail.AuthenticationFailedException) {
+            // Contraseña incorrecta: la olvidamos para que se vuelva a pedir.
+            ConfiguracionCorreo.olvidarPassword();
+            mensaje = "Gmail ha rechazado las credenciales.\n"
+                    + "Comprueba la cuenta y la contraseña de aplicación.";
+        } else if (causa instanceof javax.mail.MessagingException) {
+            mensaje = "No se ha podido conectar con el buzón.\n"
+                    + "Comprueba la conexión a Internet e inténtalo de nuevo.";
+        } else if (causa instanceof java.sql.SQLException) {
+            mensaje = "No se ha podido guardar el historial en la base de datos.";
+        } else {
+            mensaje = "Se ha producido un error inesperado.";
+        }
+        logger.log(java.util.logging.Level.WARNING, "Error al sincronizar el correo", causa);
+
+        javax.swing.JOptionPane.showMessageDialog(this,
+                mensaje + "\n\nDetalle: " + causa.getMessage(),
+                "Fallo de sincronización",
+                javax.swing.JOptionPane.ERROR_MESSAGE);
+    } 
+    
+    
+    private char[] obtenerPasswordCorreo(String usuario) {
+
+        char[] password = ConfiguracionCorreo.getPasswordSesion();
+
+        if (password.length > 0) {
+            return password;
+        }
+
+        if (AlmacenCredencialesCorreo.disponible()) {
+            try {
+                password
+                        = AlmacenCredencialesCorreo.recuperar(usuario);
+
+                if (password.length > 0) {
+                    return password;
+                }
+
+            } catch (RuntimeException ex) {
+                logger.log(
+                        java.util.logging.Level.WARNING,
+                        "No se pudo recuperar la credencial del correo",
+                        ex);
+
+                javax.swing.JOptionPane.showMessageDialog(
+                        this,
+                        "No se pudo recuperar la contraseña guardada.\n"
+                        + "Puedes introducirla manualmente.\n\n"
+                        + ex.getMessage(),
+                        "Acceso a las credenciales",
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
+            }
+        }
+
+        return pedirPasswordCorreo(usuario);
+    }
+    
+    
     
     /**
      * This method is called from within the constructor to initialize the form.
@@ -405,6 +797,15 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jPanelTitulo = new javax.swing.JPanel();
         lblTitulo = new javax.swing.JLabel();
         btnAcercaDe = new javax.swing.JButton();
+        jScrollPane1Tabla = new javax.swing.JScrollPane();
+        tablaTurnos = new javax.swing.JTable();
+        jPanelBotonera = new javax.swing.JPanel();
+        btnImportarPDF = new javax.swing.JButton();
+        btnHorasComplementarias = new javax.swing.JButton();
+        btnEditarTurno = new javax.swing.JButton();
+        btnExportarCalendar = new javax.swing.JButton();
+        btnSubirGoogleCalendar = new javax.swing.JButton();
+        btnSincronizarCorreo = new javax.swing.JButton();
         jPaneldatos = new javax.swing.JPanel();
         lblNombre = new javax.swing.JLabel();
         lblApellidos = new javax.swing.JLabel();
@@ -427,10 +828,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblSabadoslibresVal = new javax.swing.JLabel();
         lblFestivosTrabajadosVal = new javax.swing.JLabel();
         btnGuardarEmpleado = new javax.swing.JButton();
-        lblHorasIrregularesNeg = new javax.swing.JLabel();
-        lblHorasIrregularesNegVal = new javax.swing.JLabel();
-        lblSaldoIrregulares = new javax.swing.JLabel();
-        lblSaldoIrregularesVal = new javax.swing.JLabel();
         btnActualizarResumen = new javax.swing.JButton();
         lblHorasComplementarias = new javax.swing.JLabel();
         lblHorasComplementariasVal = new javax.swing.JLabel();
@@ -439,23 +836,16 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblComplNomina = new javax.swing.JLabel();
         lblAnioFiltro = new javax.swing.JLabel();
         cmbAnioFiltro = new javax.swing.JComboBox<>();
-        jSeparator2 = new javax.swing.JSeparator();
-        jSeparator3 = new javax.swing.JSeparator();
-        btnConfiguracion = new javax.swing.JButton();
         lblDiasVacacionesVal = new javax.swing.JLabel();
         lblDiasVacaciones = new javax.swing.JLabel();
         lblAvisoDiasTrabajoMaximos = new javax.swing.JLabel();
         lblAvisoPorcentajeHorasIrregulares = new javax.swing.JLabel();
         lblAvisoHorasTrabajadas = new javax.swing.JLabel();
-        jScrollPane1Tabla = new javax.swing.JScrollPane();
-        tablaTurnos = new javax.swing.JTable();
-        jPanelBotonera = new javax.swing.JPanel();
-        btnImportarPDF = new javax.swing.JButton();
-        btnHorasComplementarias = new javax.swing.JButton();
-        btnEditarTurno = new javax.swing.JButton();
-        btnExportarCalendar = new javax.swing.JButton();
-        btnSubirGoogleCalendar = new javax.swing.JButton();
-        btnSincronizarCorreo = new javax.swing.JButton();
+        jSeparator4 = new javax.swing.JSeparator();
+        btnConfiguracion = new javax.swing.JButton();
+        btnInfoHorasIrregularesPos = new javax.swing.JButton();
+        btnInfoPorcentajeHorasIrregulares = new javax.swing.JButton();
+        btnInfoDomingosFestivosTrabajados = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -473,333 +863,22 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jPanelTituloLayout.setHorizontalGroup(
             jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelTituloLayout.createSequentialGroup()
-                .addGap(268, 268, 268)
-                .addComponent(lblTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, 1023, Short.MAX_VALUE)
-                .addGap(257, 257, 257)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(lblTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addGap(120, 120, 120)
                 .addComponent(btnAcercaDe)
-                .addGap(33, 33, 33))
+                .addGap(25, 25, 25))
         );
         jPanelTituloLayout.setVerticalGroup(
             jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelTituloLayout.createSequentialGroup()
                 .addGap(18, 18, 18)
                 .addComponent(lblTitulo, javax.swing.GroupLayout.PREFERRED_SIZE, 39, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(24, Short.MAX_VALUE))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanelTituloLayout.createSequentialGroup()
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(btnAcercaDe)
-                .addGap(32, 32, 32))
-        );
-
-        jPaneldatos.setMinimumSize(new java.awt.Dimension(40, 40));
-
-        lblNombre.setText("Nombre:");
-
-        lblApellidos.setText("Apellidos:");
-
-        lblJornadaSemanal.setText("Jornada Semanal:");
-
-        lblHorasAnuales.setText("Horas Anuales:");
-
-        lblHorasTrabajadas.setText("Horas Trabajadas:");
-
-        lblDiasTrabajados.setText("Dias Trabajados:");
-
-        lblHorasIrregularesPos.setText("Horas Irregulares (+):");
-
-        lblPorcentajeHorasIrregulares.setText("% horas Irregulares");
-
-        lblSabadosLibres.setText("Sabados libres:");
-
-        lblFestivosTrabajados.setText("Domingos/Festivos trab.");
-
-        txtNombre.addActionListener(this::txtNombreActionPerformed);
-
-        lblHorasTrabajadasVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblHorasTrabajadasVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblHorasTrabajadasVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblHorasTrabajadasVal.setOpaque(true);
-
-        lblDiasTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblDiasTrabajadosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblDiasTrabajadosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblDiasTrabajadosVal.setOpaque(true);
-
-        lblHorasIrregularesPosVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblHorasIrregularesPosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblHorasIrregularesPosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblHorasIrregularesPosVal.setOpaque(true);
-
-        lblPorcentajeHorasIrregularesVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblPorcentajeHorasIrregularesVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblPorcentajeHorasIrregularesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblPorcentajeHorasIrregularesVal.setOpaque(true);
-
-        lblSabadoslibresVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblSabadoslibresVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblSabadoslibresVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblSabadoslibresVal.setOpaque(true);
-
-        lblFestivosTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblFestivosTrabajadosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblFestivosTrabajadosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblFestivosTrabajadosVal.setOpaque(true);
-
-        btnGuardarEmpleado.setText("Guardar/Actualizar datos");
-        btnGuardarEmpleado.setBorder(javax.swing.BorderFactory.createEtchedBorder());
-        btnGuardarEmpleado.setMaximumSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.setMinimumSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.setPreferredSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.addActionListener(this::btnGuardarEmpleadoActionPerformed);
-
-        lblHorasIrregularesNeg.setText("Horas Irregulares (-):");
-
-        lblHorasIrregularesNegVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblHorasIrregularesNegVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblHorasIrregularesNegVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblHorasIrregularesNegVal.setOpaque(true);
-
-        lblSaldoIrregulares.setText("Saldo H.I:");
-
-        lblSaldoIrregularesVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblSaldoIrregularesVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblSaldoIrregularesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblSaldoIrregularesVal.setOpaque(true);
-
-        btnActualizarResumen.setText("Actualizar Estadísticas");
-        btnActualizarResumen.setBorder(javax.swing.BorderFactory.createEtchedBorder());
-        btnActualizarResumen.setMaximumSize(new java.awt.Dimension(177, 24));
-        btnActualizarResumen.setMinimumSize(new java.awt.Dimension(177, 24));
-        btnActualizarResumen.setPreferredSize(new java.awt.Dimension(177, 23));
-        btnActualizarResumen.addActionListener(this::btnActualizarResumenActionPerformed);
-
-        lblHorasComplementarias.setText("H. Complementarias:");
-
-        lblHorasComplementariasVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblHorasComplementariasVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblHorasComplementariasVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblHorasComplementariasVal.setOpaque(true);
-
-        cmbJornadaSemanal.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "12.0", "20.0", "25.0", "30.0", "40.0" }));
-
-        lblComplNominaVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblComplNominaVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblComplNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblComplNominaVal.setOpaque(true);
-
-        lblComplNomina.setText("H.C. Próxima Nómina:");
-
-        lblAnioFiltro.setText("Filtrar por año:");
-
-        cmbAnioFiltro.addActionListener(this::cmbAnioFiltroActionPerformed);
-
-        btnConfiguracion.setText("Configuración");
-        btnConfiguracion.setMaximumSize(new java.awt.Dimension(177, 23));
-        btnConfiguracion.setMinimumSize(new java.awt.Dimension(177, 23));
-        btnConfiguracion.setPreferredSize(new java.awt.Dimension(177, 23));
-        btnConfiguracion.addActionListener(this::btnConfiguracionActionPerformed);
-
-        lblDiasVacacionesVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblDiasVacacionesVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblDiasVacacionesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblDiasVacacionesVal.setOpaque(true);
-
-        lblDiasVacaciones.setText("Dias de vacaciones:");
-
-        lblAvisoDiasTrabajoMaximos.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
-        lblAvisoDiasTrabajoMaximos.setToolTipText("Atención: Se ha superado el máximo anual de 224 días trabajados establecido por el convenio de Primark.");
-
-        lblAvisoPorcentajeHorasIrregulares.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
-        lblAvisoPorcentajeHorasIrregulares.setToolTipText("Atención: Se ha superado el 5% de horas Irregulares añadidas sobre la jornada habitual. \n(Primark calcula las horas irregulares usando las horas irregulares añadidas y sobre el 5% porque las horas restadas serían el otro 5% hasta el 10% indicado en el estatuto de los trabajadores)");
-
-        lblAvisoHorasTrabajadas.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
-        lblAvisoHorasTrabajadas.setToolTipText("Atención: Se ha superado el número de horas anuales especificadas.");
-
-        javax.swing.GroupLayout jPaneldatosLayout = new javax.swing.GroupLayout(jPaneldatos);
-        jPaneldatos.setLayout(jPaneldatosLayout);
-        jPaneldatosLayout.setHorizontalGroup(
-            jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                .addContainerGap(34, Short.MAX_VALUE)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblHorasComplementarias)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblPorcentajeHorasIrregulares)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblSaldoIrregulares)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblSaldoIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblHorasIrregularesNeg)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblHorasIrregularesNegVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblHorasIrregularesPos)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                        .addComponent(lblHorasTrabajadas)
-                                        .addComponent(lblDiasTrabajados)
-                                        .addComponent(lblAnioFiltro))
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                        .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addGap(22, 22, 22)
-                                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addComponent(jSeparator2)
-                                .addComponent(jSeparator1)
-                                .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                                    .addComponent(lblDiasVacaciones)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(lblSabadosLibres)
-                                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                        .addComponent(lblComplNomina)
-                                        .addGap(18, 18, 18)
-                                        .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                    .addComponent(lblFestivosTrabajados)
-                                    .addComponent(jSeparator3, javax.swing.GroupLayout.PREFERRED_SIZE, 321, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(lblAvisoDiasTrabajoMaximos)
-                            .addComponent(lblAvisoPorcentajeHorasIrregulares)
-                            .addComponent(lblAvisoHorasTrabajadas))
-                        .addGap(20, 20, 20))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
-                        .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(106, 106, 106))))
-            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                        .addGap(102, 102, 102)
-                        .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                        .addGap(101, 101, 101)
-                        .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-        jPaneldatosLayout.setVerticalGroup(
-            jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                .addGap(16, 16, 16)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(18, 18, 18)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(18, 18, 18)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(18, 18, 18)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(18, 18, 18)
-                .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(14, 14, 14)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                            .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                                    .addComponent(lblAvisoHorasTrabajadas)
-                                                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                                        .addComponent(jSeparator1, javax.swing.GroupLayout.PREFERRED_SIZE, 13, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                                        .addGap(15, 15, 15)
-                                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                                            .addComponent(lblAnioFiltro)
-                                                            .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                                        .addGap(18, 18, 18)
-                                                        .addComponent(jSeparator2, javax.swing.GroupLayout.PREFERRED_SIZE, 10, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                                        .addGap(22, 22, 22)
-                                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                                            .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                                            .addComponent(lblHorasTrabajadas))))
-                                                .addGap(18, 18, 18)
-                                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                                    .addComponent(lblDiasTrabajados, javax.swing.GroupLayout.Alignment.TRAILING)
-                                                    .addComponent(lblAvisoDiasTrabajoMaximos, javax.swing.GroupLayout.Alignment.TRAILING))))
-                                        .addGap(18, 18, 18)
-                                        .addComponent(lblHorasIrregularesPos))
-                                    .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGap(18, 18, 18)
-                                .addComponent(lblHorasIrregularesNeg))
-                            .addComponent(lblHorasIrregularesNegVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(18, 18, 18)
-                        .addComponent(lblSaldoIrregulares))
-                    .addComponent(lblSaldoIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPaneldatosLayout.createSequentialGroup()
-                        .addComponent(lblPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(lblHorasComplementarias))
-                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPaneldatosLayout.createSequentialGroup()
-                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(lblAvisoPorcentajeHorasIrregulares))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblComplNomina))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblSabadosLibres))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblFestivosTrabajados))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblDiasVacaciones))
-                .addGap(18, 18, 18)
-                .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(jSeparator3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(35, Short.MAX_VALUE))
+                .addGap(19, 19, 19))
         );
 
         tablaTurnos.setModel(new javax.swing.table.DefaultTableModel(
@@ -858,36 +937,358 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jPanelBotoneraLayout.setHorizontalGroup(
             jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelBotoneraLayout.createSequentialGroup()
-                .addGap(24, 24, 24)
+                .addGap(30, 30, 30)
                 .addComponent(btnImportarPDF, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addGroup(jPanelBotoneraLayout.createSequentialGroup()
-                        .addComponent(btnEditarTurno, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(18, 18, 18)
-                        .addComponent(btnSubirGoogleCalendar, javax.swing.GroupLayout.DEFAULT_SIZE, 177, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanelBotoneraLayout.createSequentialGroup()
                         .addComponent(btnHorasComplementarias, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(btnExportarCalendar, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                        .addComponent(btnExportarCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, 177, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPanelBotoneraLayout.createSequentialGroup()
+                        .addComponent(btnEditarTurno, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(btnSubirGoogleCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, 177, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addGap(18, 18, 18)
-                .addComponent(btnSincronizarCorreo, javax.swing.GroupLayout.DEFAULT_SIZE, 177, Short.MAX_VALUE)
-                .addGap(355, 355, 355))
+                .addComponent(btnSincronizarCorreo, javax.swing.GroupLayout.PREFERRED_SIZE, 177, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(28, Short.MAX_VALUE))
         );
         jPanelBotoneraLayout.setVerticalGroup(
             jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelBotoneraLayout.createSequentialGroup()
-                .addGap(28, 28, 28)
+                .addGap(14, 14, 14)
                 .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnImportarPDF, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnHorasComplementarias)
                     .addComponent(btnExportarCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnSincronizarCorreo, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnEditarTurno)
                     .addComponent(btnSubirGoogleCalendar, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(26, Short.MAX_VALUE))
+                .addContainerGap(17, Short.MAX_VALUE))
+        );
+
+        jPaneldatos.setMaximumSize(new java.awt.Dimension(40, 40));
+        jPaneldatos.setMinimumSize(new java.awt.Dimension(40, 40));
+        jPaneldatos.setPreferredSize(new java.awt.Dimension(300, 709));
+
+        lblNombre.setText("Nombre*");
+
+        lblApellidos.setText("Apellidos*");
+
+        lblJornadaSemanal.setText("Jornada Semanal*");
+
+        lblHorasAnuales.setText("Horas Anuales*");
+
+        lblHorasTrabajadas.setText("Horas Trabajadas:");
+
+        lblDiasTrabajados.setText("Dias Trabajados:");
+
+        lblHorasIrregularesPos.setText("Horas Irregulares (+):");
+
+        lblPorcentajeHorasIrregulares.setText("% horas Irregulares +");
+        lblPorcentajeHorasIrregulares.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
+
+        lblSabadosLibres.setText("Sabados libres:");
+
+        lblFestivosTrabajados.setText("Domingos/Festivos trab.");
+        lblFestivosTrabajados.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
+
+        txtNombre.addActionListener(this::txtNombreActionPerformed);
+
+        lblHorasTrabajadasVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblHorasTrabajadasVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblHorasTrabajadasVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblHorasTrabajadasVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblHorasTrabajadasVal.setOpaque(true);
+
+        lblDiasTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblDiasTrabajadosVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblDiasTrabajadosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblDiasTrabajadosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblDiasTrabajadosVal.setOpaque(true);
+
+        lblHorasIrregularesPosVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblHorasIrregularesPosVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblHorasIrregularesPosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblHorasIrregularesPosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblHorasIrregularesPosVal.setOpaque(true);
+
+        lblPorcentajeHorasIrregularesVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblPorcentajeHorasIrregularesVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblPorcentajeHorasIrregularesVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblPorcentajeHorasIrregularesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblPorcentajeHorasIrregularesVal.setOpaque(true);
+
+        lblSabadoslibresVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblSabadoslibresVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblSabadoslibresVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblSabadoslibresVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblSabadoslibresVal.setOpaque(true);
+
+        lblFestivosTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblFestivosTrabajadosVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblFestivosTrabajadosVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblFestivosTrabajadosVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblFestivosTrabajadosVal.setOpaque(true);
+
+        btnGuardarEmpleado.setText("Guardar/Actualizar datos");
+        btnGuardarEmpleado.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        btnGuardarEmpleado.setMaximumSize(new java.awt.Dimension(177, 24));
+        btnGuardarEmpleado.setMinimumSize(new java.awt.Dimension(177, 24));
+        btnGuardarEmpleado.setPreferredSize(new java.awt.Dimension(177, 24));
+        btnGuardarEmpleado.addActionListener(this::btnGuardarEmpleadoActionPerformed);
+
+        btnActualizarResumen.setText("Actualizar Estadísticas");
+        btnActualizarResumen.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        btnActualizarResumen.setMaximumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setMinimumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setPreferredSize(new java.awt.Dimension(177, 23));
+        btnActualizarResumen.addActionListener(this::btnActualizarResumenActionPerformed);
+
+        lblHorasComplementarias.setText("H. Complementarias:");
+
+        lblHorasComplementariasVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblHorasComplementariasVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblHorasComplementariasVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblHorasComplementariasVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblHorasComplementariasVal.setOpaque(true);
+
+        cmbJornadaSemanal.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "12.0", "20.0", "25.0", "30.0", "40.0" }));
+
+        lblComplNominaVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblComplNominaVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblComplNominaVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblComplNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblComplNominaVal.setOpaque(true);
+
+        lblComplNomina.setText("H.C. Próxima Nómina:");
+
+        lblAnioFiltro.setText("Filtrar por año:");
+
+        cmbAnioFiltro.addActionListener(this::cmbAnioFiltroActionPerformed);
+
+        lblDiasVacacionesVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblDiasVacacionesVal.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+        lblDiasVacacionesVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblDiasVacacionesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblDiasVacacionesVal.setOpaque(true);
+
+        lblDiasVacaciones.setText("Dias de vacaciones:");
+
+        lblAvisoDiasTrabajoMaximos.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblAvisoDiasTrabajoMaximos.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
+        lblAvisoDiasTrabajoMaximos.setToolTipText("Atención: Se ha superado el máximo anual de 224 días trabajados establecido por el convenio de Primark.");
+
+        lblAvisoPorcentajeHorasIrregulares.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblAvisoPorcentajeHorasIrregulares.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
+        lblAvisoPorcentajeHorasIrregulares.setToolTipText("Atención: Se ha superado el 5% de horas Irregulares añadidas sobre la jornada habitual. \n(Primark calcula las horas irregulares usando las horas irregulares añadidas y sobre el 5% porque las horas restadas serían el otro 5% hasta el 10% indicado en el estatuto de los trabajadores)");
+
+        lblAvisoHorasTrabajadas.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblAvisoHorasTrabajadas.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
+        lblAvisoHorasTrabajadas.setToolTipText("Atención: Se ha superado el número de horas anuales especificadas.");
+
+        btnConfiguracion.setText("Configuración");
+        btnConfiguracion.setMaximumSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.setMinimumSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.setPreferredSize(new java.awt.Dimension(177, 23));
+        btnConfiguracion.addActionListener(this::btnConfiguracionActionPerformed);
+
+        btnInfoHorasIrregularesPos.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info.png"))); // NOI18N
+        btnInfoHorasIrregularesPos.setBorder(null);
+        btnInfoHorasIrregularesPos.setBorderPainted(false);
+        btnInfoHorasIrregularesPos.setContentAreaFilled(false);
+        btnInfoHorasIrregularesPos.addActionListener(this::btnInfoHorasIrregularesPosActionPerformed);
+
+        btnInfoPorcentajeHorasIrregulares.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info.png"))); // NOI18N
+        btnInfoPorcentajeHorasIrregulares.setBorder(null);
+        btnInfoPorcentajeHorasIrregulares.setBorderPainted(false);
+        btnInfoPorcentajeHorasIrregulares.setContentAreaFilled(false);
+        btnInfoPorcentajeHorasIrregulares.addActionListener(this::btnInfoPorcentajeHorasIrregularesActionPerformed);
+
+        btnInfoDomingosFestivosTrabajados.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info.png"))); // NOI18N
+        btnInfoDomingosFestivosTrabajados.setBorder(null);
+        btnInfoDomingosFestivosTrabajados.setBorderPainted(false);
+        btnInfoDomingosFestivosTrabajados.setContentAreaFilled(false);
+        btnInfoDomingosFestivosTrabajados.addActionListener(this::btnInfoDomingosFestivosTrabajadosActionPerformed);
+
+        javax.swing.GroupLayout jPaneldatosLayout = new javax.swing.GroupLayout(jPaneldatos);
+        jPaneldatos.setLayout(jPaneldatosLayout);
+        jPaneldatosLayout.setHorizontalGroup(
+            jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                .addGap(88, 88, 88)
+                .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                .addGap(16, 16, 16)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addGap(4, 4, 4)
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(jSeparator4, javax.swing.GroupLayout.PREFERRED_SIZE, 289, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(18, 18, 18)
+                                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(18, 18, 18)
+                                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(18, 18, 18)
+                                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(18, 18, 18)
+                                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addComponent(jSeparator1)))
+                        .addGap(0, 21, Short.MAX_VALUE))
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(lblAnioFiltro)
+                                            .addComponent(lblHorasTrabajadas)
+                                            .addComponent(lblHorasComplementarias))
+                                        .addGap(0, 0, Short.MAX_VALUE))
+                                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(lblDiasTrabajados)
+                                            .addComponent(lblHorasIrregularesPos)
+                                            .addComponent(lblPorcentajeHorasIrregulares)
+                                            .addComponent(lblComplNomina)
+                                            .addComponent(lblSabadosLibres))
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                        .addGap(0, 0, Short.MAX_VALUE)
+                                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                                .addComponent(lblDiasVacaciones)
+                                                .addGap(45, 45, 45))
+                                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPaneldatosLayout.createSequentialGroup()
+                                                .addComponent(lblFestivosTrabajados)
+                                                .addGap(18, 18, 18)))))
+                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                    .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 60, Short.MAX_VALUE)
+                                    .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblComplNominaVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                .addGap(0, 0, Short.MAX_VALUE)
+                                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(btnInfoHorasIrregularesPos, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(btnInfoPorcentajeHorasIrregulares, javax.swing.GroupLayout.DEFAULT_SIZE, 24, Short.MAX_VALUE)
+                            .addComponent(btnInfoDomingosFestivosTrabajados, javax.swing.GroupLayout.DEFAULT_SIZE, 24, Short.MAX_VALUE)
+                            .addComponent(lblAvisoHorasTrabajadas, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblAvisoDiasTrabajoMaximos, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblAvisoPorcentajeHorasIrregulares, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                        .addGap(77, 77, 77))))
+        );
+        jPaneldatosLayout.setVerticalGroup(
+            jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                .addGap(16, 16, 16)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(15, 15, 15)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(8, 8, 8)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jSeparator1, javax.swing.GroupLayout.PREFERRED_SIZE, 13, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblAnioFiltro)
+                    .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addComponent(jSeparator4, javax.swing.GroupLayout.PREFERRED_SIZE, 13, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                .addGap(12, 12, 12)
+                                .addComponent(lblHorasTrabajadas))
+                            .addGroup(jPaneldatosLayout.createSequentialGroup()
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                    .addComponent(lblAvisoHorasTrabajadas, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addGap(12, 12, 12)
+                        .addComponent(lblDiasTrabajados)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 12, Short.MAX_VALUE)
+                        .addComponent(lblHorasIrregularesPos))
+                    .addGroup(jPaneldatosLayout.createSequentialGroup()
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.DEFAULT_SIZE, 22, Short.MAX_VALUE)
+                            .addComponent(lblAvisoDiasTrabajoMaximos, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                            .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.DEFAULT_SIZE, 22, Short.MAX_VALUE)
+                            .addComponent(btnInfoHorasIrregularesPos, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(lblPorcentajeHorasIrregulares, javax.swing.GroupLayout.DEFAULT_SIZE, 22, Short.MAX_VALUE)
+                    .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.DEFAULT_SIZE, 22, Short.MAX_VALUE)
+                    .addComponent(btnInfoPorcentajeHorasIrregulares, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblHorasComplementarias))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblComplNomina)
+                    .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(lblAvisoPorcentajeHorasIrregulares, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.DEFAULT_SIZE, 22, Short.MAX_VALUE)
+                    .addComponent(lblSabadosLibres, javax.swing.GroupLayout.Alignment.TRAILING))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblFestivosTrabajados)
+                    .addComponent(btnInfoDomingosFestivosTrabajados, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblDiasVacaciones))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(38, 38, 38))
         );
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -895,25 +1296,24 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, 330, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(0, 0, 0)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPane1Tabla)
-                    .addComponent(jPanelBotonera, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
-            .addComponent(jPanelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(jPanelBotonera, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(jPanelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(jScrollPane1Tabla)))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
+                .addComponent(jPaneldatos, javax.swing.GroupLayout.DEFAULT_SIZE, 646, Short.MAX_VALUE)
+                .addContainerGap())
+            .addGroup(layout.createSequentialGroup()
                 .addComponent(jPanelTitulo, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(layout.createSequentialGroup()
-                        .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.PREFERRED_SIZE, 693, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jPanelBotonera, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.DEFAULT_SIZE, 494, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jPanelBotonera, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         pack();
@@ -1077,7 +1477,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
     private void btnEditarTurnoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnEditarTurnoActionPerformed
 
-        // 1. Comprobar que hay una fila seleccionada
+    // 1. Comprobar que hay una fila seleccionada
         int fila = tablaTurnos.getSelectedRow();
         if (fila == -1) {
             javax.swing.JOptionPane.showMessageDialog(this,
@@ -1126,8 +1526,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             infoCompl, chkBorrarCompl
         };
 
-        int res = javax.swing.JOptionPane.showConfirmDialog(this, formulario,
-                "Editar Registro - " + fecha, javax.swing.JOptionPane.OK_CANCEL_OPTION);
+        // 3b. Mostrar el editor con las opciones Eliminar / Cancelar / Guardar.
+        //     Si se elimina el día, el método ya refresca la interfaz y devuelve CANCEL_OPTION.
+        int res = mostrarEditorConEliminar(formulario, turno);
         if (res != javax.swing.JOptionPane.OK_OPTION) {
             return;
         }
@@ -1205,73 +1606,8 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             javax.swing.JOptionPane.showMessageDialog(this,
                     "El descanso debe ser un número entero de minutos.",
                     "Error de formato", javax.swing.JOptionPane.ERROR_MESSAGE);
-        }     
-        
-    }//GEN-LAST:event_btnEditarTurnoActionPerformed
-
-    private void btnActualizarResumenActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnActualizarResumenActionPerformed
-        // TODO add your handling code here:
-        // 1. Recargamos la tabla por si ha habido cambios en los turnos
-        cargarTurnosEnTabla();
-
-        // 2. Recalculamos y pintamos los datos de la izquierda
-        actualizarPanelResumen();
-
-        javax.swing.JOptionPane.showMessageDialog(this,
-            "¡Estadísticas recalculadas correctamente!",
-            "Actualización",
-            javax.swing.JOptionPane.INFORMATION_MESSAGE);
-    }//GEN-LAST:event_btnActualizarResumenActionPerformed
-
-    private void btnGuardarEmpleadoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuardarEmpleadoActionPerformed
-        // TODO add your handling code here:
-        try {
-            String nombre = txtNombre.getText().trim();
-            String apellidos = txtApellidos.getText().trim();
-
-            // Leemos la opción seleccionada del desplegable
-            String jornadaSeleccionada = (String) cmbJornadaSemanal.getSelectedItem();
-            double jornada = Double.parseDouble(jornadaSeleccionada);
-
-            double horasAnuales = Double.parseDouble(txtHorasAnuales.getText().trim());
-
-            if (nombre.isEmpty() || apellidos.isEmpty()) {
-                javax.swing.JOptionPane.showMessageDialog(this,
-                    "Por favor, rellena tu nombre y apellidos.",
-                    "Campos vacíos",
-                    javax.swing.JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            // Creamos el objeto Trabajador y lo guardamos
-            Trabajador trabajador = new Trabajador(1, nombre, apellidos, jornada, horasAnuales);
-            BaseDeDatos.guardarOActualizarEmpleado(trabajador);
-
-            // Recalculamos las estadísticas inmediatamente con la nueva jornada
-            actualizarPanelResumen();
-
-            javax.swing.JOptionPane.showMessageDialog(this,
-                "Datos del contrato guardados con éxito",
-                "Guardado",
-                javax.swing.JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (NumberFormatException e) {
-            javax.swing.JOptionPane.showMessageDialog(this,
-                "Asegúrate de introducir un valor numérico válido en las horas anuales.",
-                "Error de formato",
-                javax.swing.JOptionPane.ERROR_MESSAGE);
         }
-    }//GEN-LAST:event_btnGuardarEmpleadoActionPerformed
-
-    private void txtNombreActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtNombreActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_txtNombreActionPerformed
-
-    private void cmbAnioFiltroActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cmbAnioFiltroActionPerformed
-        // Recargar la tabla y las estadísticas cuando el usuario cambie el año
-        cargarTurnosEnTabla();
-        actualizarPanelResumen();          
-    }//GEN-LAST:event_cmbAnioFiltroActionPerformed
+    }//GEN-LAST:event_btnEditarTurnoActionPerformed
 
     private void btnExportarCalendarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnExportarCalendarActionPerformed
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
@@ -1325,11 +1661,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             }
         }
     }//GEN-LAST:event_btnExportarCalendarActionPerformed
-
-    private void btnConfiguracionActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConfiguracionActionPerformed
-        VentanaConfiguracion configDlg = new VentanaConfiguracion(this, true);
-        configDlg.setVisible(true);
-    }//GEN-LAST:event_btnConfiguracionActionPerformed
 
     private void btnSubirGoogleCalendarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSubirGoogleCalendarActionPerformed
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
@@ -1393,55 +1724,134 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     }//GEN-LAST:event_btnAcercaDeActionPerformed
 
     private void btnSincronizarCorreoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSincronizarCorreoActionPerformed
-        // Valores que más adelante enlazaremos con las cajas de texto de VentanaConfiguracion
-        String emailUser = "tu.correo@outlook.com"; 
-        String emailPassApp = "tu_contraseña_de_aplicacion_de_outlook"; 
-        String imapHost = "outlook.office365.com"; // Servidor de Outlook
-        String imapPort = "993";
+        sincronizarCorreo();
+    }//GEN-LAST:event_btnSincronizarCorreoActionPerformed
 
-        javax.swing.JOptionPane.showMessageDialog(this, 
-            "Conectando con el correo para buscar nuevos turnos...", 
-            "Sincronizando", 
+    private void btnConfiguracionActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConfiguracionActionPerformed
+        VentanaConfiguracion configDlg = new VentanaConfiguracion(this, true);
+        configDlg.setVisible(true);
+    }//GEN-LAST:event_btnConfiguracionActionPerformed
+
+    private void cmbAnioFiltroActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cmbAnioFiltroActionPerformed
+        // Recargar la tabla y las estadísticas cuando el usuario cambie el año
+        cargarTurnosEnTabla();
+        actualizarPanelResumen();
+    }//GEN-LAST:event_cmbAnioFiltroActionPerformed
+
+    private void btnActualizarResumenActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnActualizarResumenActionPerformed
+        // TODO add your handling code here:
+        // 1. Recargamos la tabla por si ha habido cambios en los turnos
+        cargarTurnosEnTabla();
+
+        // 2. Recalculamos y pintamos los datos de la izquierda
+        actualizarPanelResumen();
+
+        javax.swing.JOptionPane.showMessageDialog(this,
+            "¡Estadísticas recalculadas correctamente!",
+            "Actualización",
             javax.swing.JOptionPane.INFORMATION_MESSAGE);
+    }//GEN-LAST:event_btnActualizarResumenActionPerformed
 
+    private void btnGuardarEmpleadoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuardarEmpleadoActionPerformed
+        // TODO add your handling code here:
         try {
-            // Llamamos al método con los nuevos parámetros
-            java.util.List<java.io.File> archivosPdf = GestorCorreoIMAP.descargarHorariosPendientes(emailUser, emailPassApp, imapHost, imapPort);
+            String nombre = txtNombre.getText().trim();
+            String apellidos = txtApellidos.getText().trim();
 
-            if (archivosPdf.isEmpty()) {
-                javax.swing.JOptionPane.showMessageDialog(this, "No hay nuevos correos de horarios pendientes de procesar.");
+            // Leemos la opción seleccionada del desplegable
+            String jornadaSeleccionada = (String) cmbJornadaSemanal.getSelectedItem();
+            double jornada = Double.parseDouble(jornadaSeleccionada);
+
+            double horasAnuales = Double.parseDouble(txtHorasAnuales.getText().trim());
+
+            if (nombre.isEmpty() || apellidos.isEmpty()) {
+                javax.swing.JOptionPane.showMessageDialog(this,
+                    "Por favor, rellena tu nombre y apellidos.",
+                    "Campos vacíos",
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
-            Trabajador empleado = BaseDeDatos.obtenerEmpleado();
-            int totalImportados = 0;
-            
-            for (java.io.File archivoPdf : archivosPdf) {
-                java.util.List<RegistroTurno> turnos = LectorPDF.procesarPDF(archivoPdf, empleado);
-                for (RegistroTurno turno : turnos) {
-                    BaseDeDatos.guardarOActualizarTurno(turno);
-                }
-                totalImportados += turnos.size();
-                
-                // NOTA: Hemos eliminado el archivoPdf.delete() de aquí. 
-                // Ahora los PDFs se quedan guardados para siempre en la carpeta "Rotas".
-            }
+            // Creamos el objeto Trabajador y lo guardamos
+            Trabajador trabajador = new Trabajador(1, nombre, apellidos, jornada, horasAnuales);
+            BaseDeDatos.guardarOActualizarEmpleado(trabajador);
 
-            cargarTurnosEnTabla();
+            // Recalculamos las estadísticas inmediatamente con la nueva jornada
             actualizarPanelResumen();
 
-            javax.swing.JOptionPane.showMessageDialog(this, 
-                "¡Éxito! Se han detectado " + archivosPdf.size() + " cuadrantes nuevos y se han importado " + totalImportados + " turnos automáticamente.\n\nLos archivos originales se han guardado en la carpeta 'Rotas'.", 
-                "Sincronización completada", 
+            javax.swing.JOptionPane.showMessageDialog(this,
+                "Datos del contrato guardados con éxito",
+                "Guardado",
                 javax.swing.JOptionPane.INFORMATION_MESSAGE);
 
-        } catch (Exception ex) {
-            javax.swing.JOptionPane.showMessageDialog(this, 
-                "Error de conexión con el correo: " + ex.getMessage(), 
-                "Fallo de sincronización", 
+        } catch (NumberFormatException e) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                "Asegúrate de introducir un valor numérico válido en las horas anuales.",
+                "Error de formato",
                 javax.swing.JOptionPane.ERROR_MESSAGE);
         }
-    }//GEN-LAST:event_btnSincronizarCorreoActionPerformed
+    }//GEN-LAST:event_btnGuardarEmpleadoActionPerformed
+
+    private void txtNombreActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtNombreActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_txtNombreActionPerformed
+
+    private void btnInfoHorasIrregularesPosActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnInfoHorasIrregularesPosActionPerformed
+        mostrarInformacionResumen(
+                "Horas irregulares positivas",
+                "Las horas irregulares que se añaden a la jornada cuentan para el máximo de horas anual. \n"
+                + "Estas horas añadidas no deben superar más del 5% de la jornada anual \n"
+        );
+    }//GEN-LAST:event_btnInfoHorasIrregularesPosActionPerformed
+
+    private void btnInfoPorcentajeHorasIrregularesActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnInfoPorcentajeHorasIrregularesActionPerformed
+        String mensaje
+            = "<html>"
+            + "<body style='width: 540px;'>"
+            + "<p>Este porcentaje indica qué proporción de las horas anuales "
+            + "del contrato representan las horas irregulares positivas.</p>"
+            + "<br>"
+            + "<table cellpadding='4' cellspacing='0'>"
+            + "  <tr>"
+            + "    <td valign='middle'>Porcentaje de jornada irregular =</td>"
+            + "    <td align='center'>"
+            + "      <u>Horas irregulares positivas</u>"
+            + "      <br>"
+            + "      Horas anuales de contrato"
+            + "    </td>"
+            + "    <td valign='middle'>&times; 100</td>"
+            + "  </tr>"
+            + "</table>"
+            + "<br>"
+            + "<p>Solo se acumulan las diferencias positivas: "
+            + "los días con menos horas no reducen este valor.</p>"
+            + "</body>"
+            + "</html>";
+        
+        mostrarInformacionResumen(
+                "Porcentaje de horas irregulares",
+                "El cálculo del porcentaje mide qué proporción representan las horas de distribución irregular "
+                + "respecto a las horas totales de tu jornada anual contratada. \n" 
+                + mensaje
+                + "\nHoras Irregulares Positivas (Numerador): Es la suma acumulada de las horas trabajadas que exceden \n"
+                + "la jornada diaria base o la planificación habitual. El criterio de la empresa contabiliza los excesos de jornada \n"
+                + "(las horas positivas) para este límite."
+                + "Horas Anuales (Denominador): Son las horas totales fijadas en tu contrato para todo el año \n"
+                + "(por ejemplo, las proporcionales según tu tipo de jornada de 12h, 20h, 25h, 30h o 40h semanales)."
+        );
+    }//GEN-LAST:event_btnInfoPorcentajeHorasIrregularesActionPerformed
+
+    private void btnInfoDomingosFestivosTrabajadosActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnInfoDomingosFestivosTrabajadosActionPerformed
+        mostrarInformacionResumen(
+                "Domingos y Festivos trabajados en el año",
+                "El máximo anual que puedes trabajar es el 50% de los domingos y \n"
+                + " festivos de apertura autorizada de tu centro comercial / municipio;"
+                + "pero el convenio establece que si el cálculo del 50% diera un número inferior a 8, \n"
+                + "se establece un mínimo obligatorio de 8 domingos/festivos al año \n"
+                + "(siempre que en la localidad haya al menos 8 domingos/festivos autorizados comercialmente)."
+
+        );
+    }//GEN-LAST:event_btnInfoDomingosFestivosTrabajadosActionPerformed
 
     /**
      * @param args the command line arguments
@@ -1489,6 +1899,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JButton btnGuardarEmpleado;
     private javax.swing.JButton btnHorasComplementarias;
     private javax.swing.JButton btnImportarPDF;
+    private javax.swing.JButton btnInfoDomingosFestivosTrabajados;
+    private javax.swing.JButton btnInfoHorasIrregularesPos;
+    private javax.swing.JButton btnInfoPorcentajeHorasIrregulares;
     private javax.swing.JButton btnSincronizarCorreo;
     private javax.swing.JButton btnSubirGoogleCalendar;
     private javax.swing.JComboBox<String> cmbAnioFiltro;
@@ -1498,8 +1911,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JPanel jPaneldatos;
     private javax.swing.JScrollPane jScrollPane1Tabla;
     private javax.swing.JSeparator jSeparator1;
-    private javax.swing.JSeparator jSeparator2;
-    private javax.swing.JSeparator jSeparator3;
+    private javax.swing.JSeparator jSeparator4;
     private javax.swing.JLabel lblAnioFiltro;
     private javax.swing.JLabel lblApellidos;
     private javax.swing.JLabel lblAvisoDiasTrabajoMaximos;
@@ -1516,8 +1928,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JLabel lblHorasAnuales;
     private javax.swing.JLabel lblHorasComplementarias;
     private javax.swing.JLabel lblHorasComplementariasVal;
-    private javax.swing.JLabel lblHorasIrregularesNeg;
-    private javax.swing.JLabel lblHorasIrregularesNegVal;
     private javax.swing.JLabel lblHorasIrregularesPos;
     private javax.swing.JLabel lblHorasIrregularesPosVal;
     private javax.swing.JLabel lblHorasTrabajadas;
@@ -1528,8 +1938,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JLabel lblPorcentajeHorasIrregularesVal;
     private javax.swing.JLabel lblSabadosLibres;
     private javax.swing.JLabel lblSabadoslibresVal;
-    private javax.swing.JLabel lblSaldoIrregulares;
-    private javax.swing.JLabel lblSaldoIrregularesVal;
     private javax.swing.JLabel lblTitulo;
     private javax.swing.JTable tablaTurnos;
     private javax.swing.JTextField txtApellidos;

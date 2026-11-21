@@ -31,6 +31,7 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         configurarPanelFestivos();
         cargarDatosActuales();
         cargarConfiguracionCorreo();
+        configurarCambioCuentaCorreo();
         
     }
 
@@ -86,28 +87,65 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     }
     
     private void cargarConfiguracionCorreo() {
-        txtCuentadeCorreoVal.setText(ConfiguracionCorreo.getUsuario());
-        txtRemitenteVal.setText(ConfiguracionCorreo.getRemitente());
 
-        txtServidorVal.setText(ConfiguracionCorreo.getHost());
+        String usuario = ConfiguracionCorreo.getUsuario();
+
+        txtCuentadeCorreoVal.setText(usuario);
+        txtRemitenteVal.setText(
+                ConfiguracionCorreo.getRemitente());
+
+        txtServidorVal.setText(
+                ConfiguracionCorreo.getHost());
+
         txtPuertoVal.setText(
-                Integer.toString(ConfiguracionCorreo.getPuerto())
-        );
+                Integer.toString(
+                        ConfiguracionCorreo.getPuerto()));
 
-        // Esta primera versión está configurada exclusivamente para Gmail.
         txtServidorVal.setEditable(false);
         txtPuertoVal.setEditable(false);
 
+        txtContrasenhaVal.setText("");
         txtContrasenhaVal.setToolTipText(
-                "Contraseña de aplicación. Solo se conserva durante esta sesión."
-        );
+                "Déjala vacía para utilizar la contraseña existente. "
+                + "Escribe una nueva para sustituirla al guardar.");
 
-        char[] password = ConfiguracionCorreo.getPasswordSesion();
+        boolean disponible
+                = AlmacenCredencialesCorreo.disponible();
+
+        chkRecordarPasswordCorreo.setEnabled(disponible);
+        chkRecordarPasswordCorreo.setSelected(false);
+
+        chkRecordarPasswordCorreo.setToolTipText(
+                "Al desmarcar y guardar se elimina la copia de Windows, "
+                + "pero se conserva la contraseña durante esta sesión.");
+
+        char[] guardada = new char[0];
 
         try {
-            txtContrasenhaVal.setText(new String(password));
+            if (disponible && !usuario.isBlank()) {
+                guardada
+                        = AlmacenCredencialesCorreo.recuperar(usuario);
+
+                chkRecordarPasswordCorreo.setSelected(
+                        guardada.length > 0);
+            }
+
+        } catch (RuntimeException ex) {
+            logger.log(
+                    java.util.logging.Level.WARNING,
+                    "No se pudo consultar la credencial de correo",
+                    ex);
+
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No se pudo consultar la contraseña de Windows.\n"
+                    + "No se ha eliminado ninguna credencial.\n\n"
+                    + ex.getMessage(),
+                    "Credenciales de correo",
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
+
         } finally {
-            java.util.Arrays.fill(password, '\0');
+            java.util.Arrays.fill(guardada, '\0');
         }
     }
     
@@ -136,17 +174,105 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         }
     }
     
+    private char[] obtenerPasswordCorreoFormulario(String usuario) {
+
+        char[] escrita = leerPasswordCorreo();
+
+        if (escrita.length > 0) {
+            return escrita;
+        }
+
+        java.util.Arrays.fill(escrita, '\0');
+
+        if (usuario.isBlank()) {
+            return new char[0];
+        }
+
+        boolean mismaCuenta = usuario.equalsIgnoreCase(
+                ConfiguracionCorreo.getUsuario().trim());
+
+        if (mismaCuenta) {
+            char[] sesion
+                    = ConfiguracionCorreo.getPasswordSesion();
+
+            if (sesion.length > 0) {
+                return sesion;
+            }
+
+            java.util.Arrays.fill(sesion, '\0');
+        }
+
+        if (AlmacenCredencialesCorreo.disponible()) {
+            return AlmacenCredencialesCorreo.recuperar(usuario);
+        }
+
+        return new char[0];
+    }
+    
+    private void configurarCambioCuentaCorreo() {
+
+        txtCuentadeCorreoVal.getDocument().addDocumentListener(
+                new javax.swing.event.DocumentListener() {
+
+            private void actualizar() {
+                txtContrasenhaVal.setText("");
+                chkRecordarPasswordCorreo.setSelected(false);
+            }
+
+            @Override
+            public void insertUpdate(
+                    javax.swing.event.DocumentEvent e) {
+                actualizar();
+            }
+
+            @Override
+            public void removeUpdate(
+                    javax.swing.event.DocumentEvent e) {
+                actualizar();
+            }
+
+            @Override
+            public void changedUpdate(
+                    javax.swing.event.DocumentEvent e) {
+                actualizar();
+            }
+        });
+    }
+
     
     private void probarConexionCorreo() {
-        final String usuario = txtCuentadeCorreoVal.getText().trim();
-        final char[] password = leerPasswordCorreo();
+        final String usuario
+                = txtCuentadeCorreoVal.getText().trim();
+
+        final char[] password;
+
+        try {
+            password = obtenerPasswordCorreoFormulario(usuario);
+
+        } catch (RuntimeException ex) {
+            logger.log(
+                    java.util.logging.Level.WARNING,
+                    "No se pudo obtener la contraseña para la prueba",
+                    ex);
+
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No se pudo recuperar la contraseña guardada.\n"
+                    + "Puedes escribirla directamente en el campo.\n\n"
+                    + ex.getMessage(),
+                    "Credenciales de correo",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+
+            return;
+        }
 
         if (usuario.isEmpty() || password.length == 0) {
             java.util.Arrays.fill(password, '\0');
 
             javax.swing.JOptionPane.showMessageDialog(
                     this,
-                    "Introduce la cuenta de correo y la contraseña de aplicación.",
+                    "Introduce la cuenta de correo y una contraseña de aplicación,\n"
+                    + "o utiliza una cuenta que ya tenga una contraseña disponible.",
                     "Faltan datos",
                     javax.swing.JOptionPane.WARNING_MESSAGE
             );
@@ -265,24 +391,94 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     }
     
     private boolean guardarConfiguracionCorreo() {
-        char[] password = leerPasswordCorreo();
+
+        String usuario
+                = txtCuentadeCorreoVal.getText().trim();
+
+        String remitente
+                = txtRemitenteVal.getText().trim();
+
+        char[] password = new char[0];
 
         try {
+            if (usuario.isBlank()) {
+                if (chkRecordarPasswordCorreo.isSelected()) {
+                    javax.swing.JOptionPane.showMessageDialog(
+                            this,
+                            "Indica una cuenta antes de recordar "
+                            + "su contraseña.",
+                            "Faltan datos",
+                            javax.swing.JOptionPane.WARNING_MESSAGE);
+
+                    return false;
+                }
+
+                ConfiguracionCorreo.guardar(
+                        usuario, remitente, password);
+
+                return true;
+            }
+
+            password
+                    = obtenerPasswordCorreoFormulario(usuario);
+
+            boolean recordar
+                    = chkRecordarPasswordCorreo.isSelected();
+
+            if (recordar && password.length == 0) {
+                javax.swing.JOptionPane.showMessageDialog(
+                        this,
+                        "Introduce la contraseña para poder "
+                        + "recordarla en este equipo.",
+                        "Falta la contraseña",
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
+
+                return false;
+            }
+
+            if (AlmacenCredencialesCorreo.disponible()) {
+                if (recordar) {
+                    AlmacenCredencialesCorreo.guardar(
+                            usuario, password);
+                } else {
+                    AlmacenCredencialesCorreo.eliminar(usuario);
+                }
+
+            } else if (recordar) {
+                javax.swing.JOptionPane.showMessageDialog(
+                        this,
+                        "El almacenamiento persistente "
+                        + "solo está disponible en Windows.",
+                        "Función no disponible",
+                        javax.swing.JOptionPane.WARNING_MESSAGE);
+
+                return false;
+            }
+
             ConfiguracionCorreo.guardar(
-                    txtCuentadeCorreoVal.getText().trim(),
-                    txtRemitenteVal.getText().trim(),
-                    password
-            );
+                    usuario, remitente, password);
+
+            txtContrasenhaVal.setText("");
 
             return true;
 
-        } catch (java.util.prefs.BackingStoreException ex) {
+        } catch (java.util.prefs.BackingStoreException
+                | RuntimeException ex) {
+
+            logger.log(
+                    java.util.logging.Level.WARNING,
+                    "No se completó el guardado del correo",
+                    ex);
+
             javax.swing.JOptionPane.showMessageDialog(
                     this,
-                    "No se han podido guardar los ajustes de correo.",
+                    "No se han podido completar los ajustes de correo.\n"
+                    + "La operación no es atómica: la credencial "
+                    + "de Windows podría haber cambiado.\n"
+                    + "Revisa los ajustes antes de reintentarlo.\n\n"
+                    + ex.getMessage(),
                     "Error al guardar",
-                    javax.swing.JOptionPane.ERROR_MESSAGE
-            );
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
 
             return false;
 
@@ -328,6 +524,8 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         lblRemitente = new javax.swing.JLabel();
         btnProbarConexion = new javax.swing.JButton();
         txtContrasenhaVal = new javax.swing.JPasswordField();
+        btnEliminarPasswordCorreo = new javax.swing.JButton();
+        chkRecordarPasswordCorreo = new javax.swing.JCheckBox();
         btnGuardar = new javax.swing.JButton();
         btnCerrar = new javax.swing.JButton();
 
@@ -344,7 +542,7 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
             .addGroup(jPanelAparienciaLayout.createSequentialGroup()
                 .addGap(76, 76, 76)
                 .addComponent(lblTemaVisual)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 97, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 143, Short.MAX_VALUE)
                 .addComponent(cmbTemaConfig, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(102, 102, 102))
         );
@@ -355,7 +553,7 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                 .addGroup(jPanelAparienciaLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblTemaVisual)
                     .addComponent(cmbTemaConfig, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(142, Short.MAX_VALUE))
+                .addContainerGap(154, Short.MAX_VALUE))
         );
 
         jTabbedPane1.addTab("Apariencia", jPanelApariencia);
@@ -364,11 +562,11 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         JpanelFestivos.setLayout(JpanelFestivosLayout);
         JpanelFestivosLayout.setHorizontalGroup(
             JpanelFestivosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 449, Short.MAX_VALUE)
+            .addGap(0, 495, Short.MAX_VALUE)
         );
         JpanelFestivosLayout.setVerticalGroup(
             JpanelFestivosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 231, Short.MAX_VALUE)
+            .addGap(0, 243, Short.MAX_VALUE)
         );
 
         jTabbedPane1.addTab("Guardar Festivos", JpanelFestivos);
@@ -424,7 +622,7 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                                 .addComponent(btnCerrarSesionGoogle, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addGap(3, 3, 3))
                             .addComponent(btnExaminarCredentials, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addContainerGap(27, Short.MAX_VALUE))
+                .addContainerGap(73, Short.MAX_VALUE))
         );
         jPanelGoogleCalendarLayout.setVerticalGroup(
             jPanelGoogleCalendarLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -445,7 +643,7 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                 .addComponent(btnExaminarCredentials)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(btnCerrarSesionGoogle)
-                .addContainerGap(23, Short.MAX_VALUE))
+                .addContainerGap(35, Short.MAX_VALUE))
         );
 
         jTabbedPane1.addTab("Google Calendar", jPanelGoogleCalendar);
@@ -475,7 +673,10 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         btnProbarConexion.setText("Probar conexión");
         btnProbarConexion.addActionListener(this::btnProbarConexionActionPerformed);
 
-        txtContrasenhaVal.setText("jPasswordField1");
+        btnEliminarPasswordCorreo.setText("Eliminar contraseña guardada");
+        btnEliminarPasswordCorreo.addActionListener(this::btnEliminarPasswordCorreoActionPerformed);
+
+        chkRecordarPasswordCorreo.setText("Recordar contraseña en este equipo");
 
         javax.swing.GroupLayout jPanelCorreoLayout = new javax.swing.GroupLayout(jPanelCorreo);
         jPanelCorreo.setLayout(jPanelCorreoLayout);
@@ -485,6 +686,8 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                 .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(jPanelCorreoLayout.createSequentialGroup()
                         .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(btnEliminarPasswordCorreo)
+                        .addGap(18, 18, 18)
                         .addComponent(btnProbarConexion))
                     .addGroup(jPanelCorreoLayout.createSequentialGroup()
                         .addGap(39, 39, 39)
@@ -493,8 +696,9 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
                             .addComponent(lblContrasenha)
                             .addComponent(lblServidor)
                             .addComponent(lblPuerto)
-                            .addComponent(lblRemitente))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 35, Short.MAX_VALUE)
+                            .addComponent(lblRemitente)
+                            .addComponent(chkRecordarPasswordCorreo))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
                             .addComponent(txtServidorVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(txtCuentadeCorreoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -506,28 +710,32 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         jPanelCorreoLayout.setVerticalGroup(
             jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelCorreoLayout.createSequentialGroup()
-                .addGap(27, 27, 27)
+                .addGap(21, 21, 21)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblCuentaDeCorreo)
+                    .addComponent(txtCuentadeCorreoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(txtCuentadeCorreoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblCuentaDeCorreo))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblContrasenha)
-                    .addComponent(txtContrasenhaVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                    .addComponent(txtContrasenhaVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblContrasenha))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(txtServidorVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblServidor))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(txtPuertoVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblPuerto))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(txtRemitenteVal, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblRemitente))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 17, Short.MAX_VALUE)
-                .addComponent(btnProbarConexion)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(chkRecordarPasswordCorreo)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 33, Short.MAX_VALUE)
+                .addGroup(jPanelCorreoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(btnProbarConexion)
+                    .addComponent(btnEliminarPasswordCorreo))
                 .addContainerGap())
         );
 
@@ -544,24 +752,24 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addContainerGap(268, Short.MAX_VALUE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(btnGuardar)
                 .addGap(18, 18, 18)
                 .addComponent(btnCerrar)
                 .addGap(27, 27, 27))
             .addGroup(layout.createSequentialGroup()
-                .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 449, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(0, 0, Short.MAX_VALUE))
+                .addComponent(jTabbedPane1)
+                .addContainerGap())
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 266, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 278, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(btnGuardar)
                     .addComponent(btnCerrar))
-                .addContainerGap(19, Short.MAX_VALUE))
+                .addContainerGap(14, Short.MAX_VALUE))
         );
 
         pack();
@@ -596,26 +804,25 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
             for (int i = 0; i < modeloFestivos.getRowCount(); i++) {
                 String fechaStr = (String) modeloFestivos.getValueAt(i, 0);
                 String nombre = (String) modeloFestivos.getValueAt(i, 1);
-                
+
                 if (fechaStr != null && !fechaStr.trim().isEmpty()) {
                     try {
                         java.time.LocalDate fecha = java.time.LocalDate.parse(fechaStr.trim());
                         String nomFinal = (nombre == null || nombre.trim().isEmpty()) ? "Festivo" : nombre.trim();
                         nuevosFestivos.put(fecha, nomFinal);
                     } catch (java.time.format.DateTimeParseException ex) {
-                        javax.swing.JOptionPane.showMessageDialog(this, 
-                            "La fecha '" + fechaStr + "' no tiene el formato correcto (YYYY-MM-DD).", 
-                            "Error de formato", javax.swing.JOptionPane.ERROR_MESSAGE);
-                        return; 
+                        javax.swing.JOptionPane.showMessageDialog(this,
+                                "La fecha '" + fechaStr + "' no tiene el formato correcto (YYYY-MM-DD).",
+                                "Error de formato", javax.swing.JOptionPane.ERROR_MESSAGE);
+                        return;
                     }
                 }
             }
-            
-            if (!guardarConfiguracionCorreo()) {
-                return;
-            }
-            GestorFestivos.guardarFestivos(nuevosFestivos);
         }
+        if (!guardarConfiguracionCorreo()) {
+            return;
+        }
+        GestorFestivos.guardarFestivos(nuevosFestivos);
 
         if (ventanaPrincipal != null) {
             ventanaPrincipal.actualizarPanelResumen();
@@ -683,6 +890,66 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
         probarConexionCorreo();
     }//GEN-LAST:event_btnProbarConexionActionPerformed
 
+    private void btnEliminarPasswordCorreoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnEliminarPasswordCorreoActionPerformed
+        String usuario
+                = txtCuentadeCorreoVal.getText().trim();
+
+        if (usuario.isBlank()) {
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "Indica la cuenta cuya contraseña quieres eliminar.");
+            return;
+        }
+
+        int opcion = javax.swing.JOptionPane.showConfirmDialog(
+                this,
+                "¿Eliminar la contraseña guardada de "
+                + usuario + "?\n\n"
+                + "Esta acción se aplica inmediatamente,\n"
+                + "aunque después pulses Cancelar.",
+                "Eliminar contraseña",
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+
+        if (opcion != javax.swing.JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        try {
+            if (AlmacenCredencialesCorreo.disponible()) {
+                AlmacenCredencialesCorreo.eliminar(usuario);
+            }
+
+            if (usuario.equalsIgnoreCase(
+                    ConfiguracionCorreo.getUsuario().trim())) {
+
+                ConfiguracionCorreo.olvidarPassword();
+            }
+
+            txtContrasenhaVal.setText("");
+            chkRecordarPasswordCorreo.setSelected(false);
+
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No queda una contraseña guardada para esa cuenta.\n"
+                    + "Si era la cuenta activa, también se ha limpiado "
+                    + "la contraseña de sesión.");
+
+        } catch (RuntimeException ex) {
+            logger.log(
+                    java.util.logging.Level.WARNING,
+                    "No se pudo eliminar la credencial de correo",
+                    ex);
+
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No se pudo eliminar la contraseña.\n\n"
+                    + ex.getMessage(),
+                    "Error",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
+    }//GEN-LAST:event_btnEliminarPasswordCorreoActionPerformed
+
     /**
      * @param args the command line arguments
      */
@@ -724,9 +991,11 @@ public class VentanaConfiguracion extends javax.swing.JDialog {
     private javax.swing.JPanel JpanelFestivos;
     private javax.swing.JButton btnCerrar;
     private javax.swing.JButton btnCerrarSesionGoogle;
+    private javax.swing.JButton btnEliminarPasswordCorreo;
     private javax.swing.JButton btnExaminarCredentials;
     private javax.swing.JButton btnGuardar;
     private javax.swing.JButton btnProbarConexion;
+    private javax.swing.JCheckBox chkRecordarPasswordCorreo;
     private javax.swing.JComboBox<String> cmbTemaConfig;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JPanel jPanelApariencia;

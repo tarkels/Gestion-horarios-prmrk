@@ -25,6 +25,7 @@ import com.google.api.services.calendar.model.CalendarList;
 import com.google.api.services.calendar.model.CalendarListEntry;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.EventDateTime;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
@@ -112,31 +113,147 @@ public class GoogleCalendarService {
     /**
      * Crea un evento y lo sube al calendario "Trabajo".
      */
-    public static void insertarTurnoEnGoogleCalendar(RegistroTurno turno, String tituloEvento) throws Exception {
-        if (turno.getHoraEntrada() == null || turno.getHoraSalida() == null) {
-            return;
+    private static Event construirEvento(
+            RegistroTurno turno, String tituloEvento) {
+
+        if (turno == null
+                || turno.getFecha() == null
+                || !"NORMAL".equals(turno.getTipoDia())
+                || turno.getEntradaEfectiva() == null
+                || turno.getSalidaEfectiva() == null
+                || turno.calcularHorasEfectivas() <= 0) {
+
+            throw new IllegalArgumentException(
+                    "El turno no contiene un horario exportable."
+            );
         }
 
-        Calendar servicio = obtenerServicioCalendario();
-        
-        // Obtenemos el ID del calendario "Trabajo" (lo crea si no existe)
-        String calendarId = obtenerOCrearCalendario(servicio, "Trabajo");
+
+        java.time.LocalDateTime inicio
+                = turno.getFecha().atTime(
+                        turno.getEntradaEfectiva()
+                );
+
+        java.time.LocalDateTime fin
+                = turno.getFecha().atTime(
+                        turno.getSalidaEfectiva()
+                );
+
+        if (fin.isBefore(inicio)) {
+            fin = fin.plusDays(1);
+        }
+
+        java.time.ZoneId zona
+                = java.time.ZoneId.systemDefault();
 
         Event evento = new Event()
                 .setSummary(tituloEvento)
-                .setDescription("Turno de trabajo en Primark.\nDescanso: " + turno.getMinutosDescanso() + " min.");
+                .setDescription(
+                        "Turno de trabajo en Primark.\n"
+                        + "Descanso: "
+                        + turno.calcularDescansoEfectivo()
+                        + " min."
+                );
 
-        Date inicioDate = Date.from(turno.getFecha().atTime(turno.getHoraEntrada()).atZone(ZoneId.systemDefault()).toInstant());
-        DateTime inicioDateTime = new DateTime(inicioDate);
-        EventDateTime start = new EventDateTime().setDateTime(inicioDateTime).setTimeZone("Europe/Madrid");
-        evento.setStart(start);
+        DateTime inicioDateTime = new DateTime(
+                java.util.Date.from(
+                        inicio.atZone(zona).toInstant()
+                )
+        );
 
-        Date finDate = Date.from(turno.getFecha().atTime(turno.getHoraSalida()).atZone(ZoneId.systemDefault()).toInstant());
-        DateTime finDateTime = new DateTime(finDate);
-        EventDateTime end = new EventDateTime().setDateTime(finDateTime).setTimeZone("Europe/Madrid");
-        evento.setEnd(end);
+        DateTime finDateTime = new DateTime(
+                java.util.Date.from(
+                        fin.atZone(zona).toInstant()
+                )
+        );
 
-        // Insertamos el evento en el calendario específico usando su ID (en vez de "primary")
-        servicio.events().insert(calendarId, evento).execute();
+        evento.setStart(
+                new EventDateTime()
+                        .setDateTime(inicioDateTime)
+                        .setTimeZone(zona.getId())
+        );
+
+        evento.setEnd(
+                new EventDateTime()
+                        .setDateTime(finDateTime)
+                        .setTimeZone(zona.getId())
+        );
+
+        return evento;
     }
+    
+    
+    public enum ResultadoSync {
+        CREADO, ACTUALIZADO, SIN_CAMBIOS
+    }
+
+    public static String obtenerCalendarioDeTurnos(Calendar servicio)
+            throws Exception {
+        return obtenerOCrearCalendario(servicio, "Turnos Primark (app)");
+    }
+
+    private static String idGoogleDelTurno(RegistroTurno turno) {
+        String clave = "apphorario:turno:v1:"
+                + turno.getEmpleadoId() + ":" + turno.getFecha();
+
+        return java.util.UUID.nameUUIDFromBytes(
+                clave.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        ).toString().replace("-", "");
+    }
+
+    private static boolean mismoInstante(EventDateTime a, EventDateTime b) {
+        return a != null && b != null
+                && a.getDateTime() != null && b.getDateTime() != null
+                && a.getDateTime().getValue() == b.getDateTime().getValue();
+    }
+
+    public static ResultadoSync sincronizarTurno(
+            Calendar servicio, String calendarId, RegistroTurno turno)
+            throws Exception {
+
+        String titulo = "Primark - " + turno.getEntradaEfectiva()
+                + " a " + turno.getSalidaEfectiva();
+
+        Event deseado = construirEvento(turno, titulo);
+        String id = idGoogleDelTurno(turno);
+
+        Event actual;
+        try {
+            actual = servicio.events().get(calendarId, id).execute();
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() != 404) {
+                throw e; // Un error de permisos o red no significa «no existe».
+            }
+
+            deseado.setId(id);
+            servicio.events().insert(calendarId, deseado).execute();
+            return ResultadoSync.CREADO;
+        }
+
+        if ("cancelled".equals(actual.getStatus())) {
+            throw new IllegalStateException(
+                    "El evento del " + turno.getFecha()
+                    + " está eliminado en Google. Revisa ese día antes de continuar."
+            );
+        }
+
+        boolean coincide
+                = java.util.Objects.equals(actual.getSummary(), deseado.getSummary())
+                && java.util.Objects.equals(
+                        actual.getDescription(), deseado.getDescription())
+                && mismoInstante(actual.getStart(), deseado.getStart())
+                && mismoInstante(actual.getEnd(), deseado.getEnd());
+
+        if (coincide) {
+            return ResultadoSync.SIN_CAMBIOS;
+        }
+
+        Calendar.Events.Patch peticion
+                = servicio.events().patch(calendarId, id, deseado);
+        peticion.getRequestHeaders().setIfMatch(actual.getEtag());
+        peticion.execute();
+
+        return ResultadoSync.ACTUALIZADO;
+    }
+    
 }

@@ -41,16 +41,19 @@ public class ExportadorCalendar {
             // 2. Crear un evento (VEVENT) por cada turno válido y futuro
             for (RegistroTurno turno : turnos) {
                 
-                // NUEVO FILTRO: Solo exportar si la fecha del turno es hoy o posterior
-                if (turno.getFecha() != null && !turno.getFecha().isBefore(hoy)) {
+                // Filtro para evitar que pase si la fecha es nula
+                if (turno.getFecha() != null) {
                     
                     // Solo exportamos días de trabajo NORMAL (ignoramos VACACIONES y LIBRES)
                     if ("NORMAL".equals(turno.getTipoDia()) && turno.getEntradaEfectiva() != null && turno.getSalidaEfectiva() != null) {
-                        
+
                         // Convertir fecha y hora a LocalDateTime
                         LocalDateTime inicio = LocalDateTime.of(turno.getFecha(), turno.getEntradaEfectiva());
                         LocalDateTime fin = LocalDateTime.of(turno.getFecha(), turno.getSalidaEfectiva());
-                        
+                        if (fin.isBefore(inicio)) {
+                            fin = fin.plusDays(1);
+                        }
+
                         // Ajustar a zona horaria UTC (obligatorio en iCal si termina en 'Z')
                         String dtStart = inicio.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("UTC")).format(ICS_FORMATTER);
                         String dtEnd = fin.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("UTC")).format(ICS_FORMATTER);

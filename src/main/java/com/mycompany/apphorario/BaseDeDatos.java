@@ -204,11 +204,56 @@ public class BaseDeDatos {
         public double horasIrregularesPos = 0.0;
         public double porcentajeIrregulares = 0.0;
         public double horasComplementarias = 0.0;
-        public double horasComplNomina = 0.0;
         public int sabadosLibres = 0;
         public int festivosTrabajados = 0;
         public int diasVacaciones = 0;
     }
+    
+    public static class ResumenPeriodo {
+    public double horasPlanificadas = 0.0;
+    public double horasEfectivas = 0.0;
+    public int diasTrabajados = 0;
+    public double horasComplementarias = 0.0;
+}
+
+    /**
+     * Calcula los indicadores de los turnos del periodo seleccionado. La lista
+     * debe llegar filtrada previamente por empleado, año y mes.
+     */
+    public static ResumenPeriodo calcularResumenPeriodo(
+            java.util.List<RegistroTurno> turnos) {
+
+        java.util.Objects.requireNonNull(
+                turnos,
+                "La lista de turnos no puede ser null."
+        );
+
+        ResumenPeriodo resumen = new ResumenPeriodo();
+
+        for (RegistroTurno turno : turnos) {
+            resumen.horasComplementarias
+                    += turno.getHorasComplementarias();
+
+            if (!"NORMAL".equals(turno.getTipoDia())) {
+                continue;
+            }
+
+            resumen.horasPlanificadas
+                    += turno.calcularHorasOriginales();
+
+            double horasEfectivas
+                    = turno.calcularHorasEfectivas();
+
+            resumen.horasEfectivas += horasEfectivas;
+
+            if (horasEfectivas > 0) {
+                resumen.diasTrabajados++;
+            }
+        }
+
+        return resumen;
+    }
+    
     
     public static void actualizarHorasComplementarias(int empleadoId, String fechaStr, double horasCompl) {
         String sql = "UPDATE registro_horas SET horas_complementarias = ? WHERE empleado_id = ? AND fecha = ?";
@@ -256,23 +301,17 @@ public class BaseDeDatos {
     }
     
     
-    public static ResumenJornada calcularResumen(Trabajador empleado, String anioFiltro) {
+    public static ResumenJornada calcularResumenAnual(Trabajador empleado, String anioFiltro) {
         ResumenJornada resumen = new ResumenJornada();
         if (empleado == null) {
             return resumen;
         }
+        if (anioFiltro == null
+                || !anioFiltro.matches("[0-9]{4}")) {
 
-        // Determinamos la ventana de cobro de la próxima nómina (del 23 al 22)
-        java.time.LocalDate hoy = java.time.LocalDate.now();
-        java.time.LocalDate inicioNomina;
-        java.time.LocalDate finNomina;
-
-        if (hoy.getDayOfMonth() <= 22) {
-            finNomina = hoy.withDayOfMonth(22);
-            inicioNomina = hoy.minusMonths(1).withDayOfMonth(23);
-        } else {
-            inicioNomina = hoy.withDayOfMonth(23);
-            finNomina = hoy.plusMonths(1).withDayOfMonth(22);
+            throw new IllegalArgumentException(
+                    "El control anual necesita un año concreto."
+            );
         }
 
         double horasPrevistasDiarias = 8.0;
@@ -311,13 +350,6 @@ public class BaseDeDatos {
 
             // Acumulador global de horas complementarias
             resumen.horasComplementarias += horasCompl;
-
-            // Acumulador de horas complementarias para el periodo de cobro actual (del 23 al 22)
-            if (turno.getFecha() != null
-                    && !turno.getFecha().isBefore(inicioNomina)
-                    && !turno.getFecha().isAfter(finNomina)) {
-                resumen.horasComplNomina += horasCompl;
-            }
 
             // Recuento de sábados libres (excluyendo días de vacaciones)
             if (turno.getFecha() != null && turno.getFecha().getDayOfWeek() == java.time.DayOfWeek.SATURDAY) {
@@ -389,25 +421,83 @@ public class BaseDeDatos {
     }
 
     // Devuelve todos los turnos de un empleado, filtrados por año ("Todos" = sin filtro)
-    public static java.util.List<RegistroTurno> obtenerTurnos(int empleadoId, String anioFiltro) {
-        java.util.List<RegistroTurno> turnos = new java.util.ArrayList<>();
-        boolean filtrarAnio = (anioFiltro != null && !anioFiltro.equals("Todos"));
+// Mantiene la compatibilidad con el resumen y las exportaciones.
+public static java.util.List<RegistroTurno> obtenerTurnos(
+        int empleadoId, String anioFiltro) {
 
-        String sql = "SELECT * FROM registro_horas WHERE empleado_id = ?";
-        if (filtrarAnio) sql += " AND fecha LIKE ?";
+    return obtenerTurnos(empleadoId, anioFiltro, 0);
+}
+
+/**
+ * Obtiene los turnos de un empleado.
+ *
+ * @param empleadoId identificador del empleado
+ * @param anioFiltro año seleccionado o "Todos"
+ * @param mesFiltro 0 = todos los meses; 1 a 12 = mes concreto
+ */
+    public static java.util.List<RegistroTurno> obtenerTurnos(int empleadoId, String anioFiltro, int mesFiltro) {
+
+        if (mesFiltro < 0 || mesFiltro > 12) {
+            throw new IllegalArgumentException(
+                    "El mes debe estar entre 0 y 12."
+            );
+        }
+
+        java.util.List<RegistroTurno> turnos
+                = new java.util.ArrayList<>();
+
+        boolean filtrarAnio = anioFiltro != null
+                && !"Todos".equals(anioFiltro);
+
+        String sql = "SELECT * FROM registro_horas "
+                + "WHERE empleado_id = ?";
+
+        String patronFecha = null;
+
+        if (filtrarAnio) {
+            if (mesFiltro == 0) {
+                patronFecha = anioFiltro + "-%";
+            } else {
+                patronFecha = String.format(
+                        java.util.Locale.ROOT,
+                        "%s-%02d-%%",
+                        anioFiltro,
+                        mesFiltro
+                );
+            }
+
+            sql += " AND fecha LIKE ?";
+        }
+
         sql += " ORDER BY fecha ASC";
 
-        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, empleadoId);
-            if (filtrarAnio) pstmt.setString(2, anioFiltro + "-%");
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    turnos.add(mapearTurno(rs));
+        try (Connection conn = conectar()) {
+            if (conn == null) {
+                throw new SQLException(
+                        "No se ha podido conectar con la base de datos."
+                );
+            }
+
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setInt(1, empleadoId);
+
+                if (filtrarAnio) {
+                    pstmt.setString(2, patronFecha);
+                }
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        turnos.add(mapearTurno(rs));
+                    }
                 }
             }
+
         } catch (SQLException e) {
-            System.out.println("Error al obtener los turnos: " + e.getMessage());
+            throw new IllegalStateException(
+                    "No se han podido cargar los turnos.", e
+            );
         }
+
         return turnos;
     }
 
@@ -496,6 +586,102 @@ public class BaseDeDatos {
             }
         }
     }
+    
+    
+    public static class ResumenNomina {
+    public final LocalDate inicio;
+    public final LocalDate fin;
+    public final double horasComplementarias;
+
+    public ResumenNomina(
+            LocalDate inicio,
+            LocalDate fin,
+            double horasComplementarias) {
+
+        this.inicio = inicio;
+        this.fin = fin;
+        this.horasComplementarias = horasComplementarias;
+    }
+}
+
+    /**
+     * Calcula las complementarias del periodo que contiene la fecha de
+     * referencia: desde el día 23 hasta el día 22.
+     */
+    public static ResumenNomina calcularResumenNomina(
+            int empleadoId, LocalDate fechaReferencia) {
+
+        if (empleadoId <= 0) {
+            throw new IllegalArgumentException(
+                    "El identificador del empleado no es válido."
+            );
+        }
+
+        java.util.Objects.requireNonNull(
+                fechaReferencia,
+                "La fecha de referencia no puede ser null."
+        );
+
+        LocalDate inicio;
+        LocalDate fin;
+
+        if (fechaReferencia.getDayOfMonth() <= 22) {
+            inicio = fechaReferencia.minusMonths(1)
+                    .withDayOfMonth(23);
+
+            fin = fechaReferencia.withDayOfMonth(22);
+        } else {
+            inicio = fechaReferencia.withDayOfMonth(23);
+
+            fin = fechaReferencia.plusMonths(1)
+                    .withDayOfMonth(22);
+        }
+
+        String sql = "SELECT COALESCE("
+                + "SUM(horas_complementarias), 0"
+                + ") AS total "
+                + "FROM registro_horas "
+                + "WHERE empleado_id = ? "
+                + "AND fecha >= ? AND fecha <= ?";
+
+        try (Connection conn = conectar()) {
+            if (conn == null) {
+                throw new SQLException(
+                        "No se ha podido conectar con la base de datos."
+                );
+            }
+
+            try (PreparedStatement pstmt
+                    = conn.prepareStatement(sql)) {
+
+                pstmt.setInt(1, empleadoId);
+                pstmt.setString(2, inicio.toString());
+                pstmt.setString(3, fin.toString());
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new SQLException(
+                                "No se ha obtenido el resumen de nómina."
+                        );
+                    }
+
+                    return new ResumenNomina(
+                            inicio,
+                            fin,
+                            rs.getDouble("total")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "No se han podido calcular las "
+                    + "complementarias de nómina.",
+                    e
+            );
+        }
+    }
+    
     
 }
 

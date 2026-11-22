@@ -175,20 +175,44 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     }
 
     
-    
-    
-    
     private void cargarDatosEmpleado() {
-        Trabajador t = BaseDeDatos.obtenerEmpleado();
-        if (t != null) {
-            txtNombre.setText(t.getNombre());
-            txtApellidos.setText(t.getApellidos());
-            
-            // Seleccionamos en el desplegable la jornada del empleado guardado
-            cmbJornadaSemanal.setSelectedItem(String.valueOf(t.getJornadaSemanal()));
-            
-            txtHorasAnuales.setText(String.valueOf(t.getHorasAnuales()));
+        Trabajador trabajador = BaseDeDatos.obtenerEmpleado();
+
+        if (trabajador == null) {
+            lblFichaTrabajador.setText(
+                    "Sin trabajador configurado"
+            );
+
+            btnTrabajador.setText("Configurar trabajador…");
+            return;
         }
+
+        java.text.DecimalFormat formato
+                = new java.text.DecimalFormat(
+                        "0.##",
+                        java.text.DecimalFormatSymbols.getInstance(
+                                new java.util.Locale("es", "ES")
+                        )
+                );
+
+        String nombreCompleto = (trabajador.getNombre()
+                + " "
+                + trabajador.getApellidos()).trim();
+
+        lblFichaTrabajador.setText(
+                nombreCompleto
+                + " · "
+                + formato.format(
+                        trabajador.getJornadaSemanal()
+                )
+                + " h/semana · "
+                + formato.format(
+                        trabajador.getHorasAnuales()
+                )
+                + " h/año"
+        );
+
+        btnTrabajador.setText("Trabajador…");
     }
     
     
@@ -259,7 +283,10 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             }
 
             BaseDeDatos.ResumenPeriodo resumenPeriodo
-                    = BaseDeDatos.calcularResumenPeriodo(turnos);
+                    = BaseDeDatos.calcularResumenPeriodo(
+                            turnos,
+                            empleado
+                    );
 
             mostrarResumenPeriodo(resumenPeriodo);  
             
@@ -294,29 +321,185 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     //SECCION PARA FILTROS Y RESUMEN
     //Utilizaremos esta variable para impedir que se recarguen los datos mientras estamos rellenando los desplegables.
     private boolean actualizandoFiltros = false;
+
+    private String obtenerTextoFechasPeriodo() {
+        String anio = obtenerAnioSeleccionado();
+        int mes = obtenerMesSeleccionado();
+
+        if ("Todos".equals(anio)) {
+            return "Todos los registros disponibles";
+        }
+
+        int anioNumero = Integer.parseInt(anio);
+
+        java.time.LocalDate inicio;
+        java.time.LocalDate fin;
+
+        if (mes == 0) {
+            inicio = java.time.LocalDate.of(
+                    anioNumero, 1, 1
+            );
+
+            fin = java.time.LocalDate.of(
+                    anioNumero, 12, 31
+            );
+
+        } else {
+            java.time.YearMonth periodo
+                    = java.time.YearMonth.of(
+                            anioNumero,
+                            mes
+                    );
+
+            inicio = periodo.atDay(1);
+            fin = periodo.atEndOfMonth();
+        }
+
+        java.time.format.DateTimeFormatter formato
+                = java.time.format.DateTimeFormatter
+                        .ofPattern("dd/MM/yyyy");
+
+        return (mes == 0 ? "Año natural: " : "Mes natural: ")
+                + inicio.format(formato)
+                + "–"
+                + fin.format(formato);
+    }
+
+  
+    //  Asi todos los cambios de periodo seguirán el mismo recorrido
+    private void actualizarVistaDelPeriodo() {
+        cargarTurnosEnTabla();
+        actualizarPanelResumen();
+    }
+
+    private void asegurarAnioEnFiltro(int anio) {
+        String textoAnio = String.valueOf(anio);
+
+        for (int i = 0; i < cmbAnioFiltro.getItemCount(); i++) {
+            if (textoAnio.equals(cmbAnioFiltro.getItemAt(i))) {
+                return;
+            }
+        }
+
+        // Conservamos "Todos" al principio y los años descendentes.
+        int posicion = 1;
+
+        while (posicion < cmbAnioFiltro.getItemCount()) {
+            int anioExistente = Integer.parseInt(
+                    cmbAnioFiltro.getItemAt(posicion)
+            );
+
+            if (anio > anioExistente) {
+                break;
+            }
+
+            posicion++;
+        }
+
+        cmbAnioFiltro.insertItemAt(textoAnio, posicion);
+    }
+
+    private void seleccionarPeriodo(
+            java.time.YearMonth periodo) {
+
+        boolean estadoAnterior = actualizandoFiltros;
+        actualizandoFiltros = true;
+
+        try {
+            asegurarAnioEnFiltro(periodo.getYear());
+
+            cmbAnioFiltro.setSelectedItem(
+                    String.valueOf(periodo.getYear())
+            );
+
+            cmbMesFiltro.setSelectedIndex(
+                    periodo.getMonthValue()
+            );
+
+            configurarDisponibilidadMes();
+
+        } finally {
+            actualizandoFiltros = estadoAnterior;
+        }
+
+        if (!estadoAnterior) {
+            actualizarVistaDelPeriodo();
+        }
+    }
+
+    private void desplazarPeriodo(int meses) {
+        String anio = obtenerAnioSeleccionado();
+        int mes = obtenerMesSeleccionado();
+
+        if ("Todos".equals(anio) || mes == 0) {
+            return;
+        }
+
+        java.time.YearMonth periodo
+                = java.time.YearMonth.of(
+                        Integer.parseInt(anio),
+                        mes
+                );
+
+        seleccionarPeriodo(
+                periodo.plusMonths(meses)
+        );
+    }
     
     // Código para filtrar por año las estádisticas resumen
     private void cargarAniosEnFiltro() {
+        Object seleccionAnterior
+                = cmbAnioFiltro.getSelectedItem();
+
+        String anioAnterior = seleccionAnterior == null
+                ? null
+                : seleccionAnterior.toString();
+
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
-        if (empleado == null) return;
-        
-        // 1. Obtener la lista de años reales desde SQLite
-        java.util.List<String> anios = BaseDeDatos.obtenerAniosDisponibles(empleado.getId());
-        
-        // 2. Limpiar el ComboBox
-        cmbAnioFiltro.removeAllItems();
-        
-        // 3. Añadir la opción de ver "Todos los años" (opcional pero muy útil)
-        cmbAnioFiltro.addItem("Todos");
-        
-        // 4. Volcar los años encontrados
-        for (String anio : anios) {
-            cmbAnioFiltro.addItem(anio);
+
+        java.util.List<String> anios
+                = new java.util.ArrayList<>();
+
+        if (empleado != null) {
+            anios = BaseDeDatos.obtenerAniosDisponibles(
+                    empleado.getId()
+            );
         }
-        
-        // 5. Por defecto, si hay años registrados, seleccionamos el más reciente (el primero tras "Todos")
-        if (!anios.isEmpty()) {
-            cmbAnioFiltro.setSelectedIndex(1); 
+
+        boolean estadoAnterior = actualizandoFiltros;
+        actualizandoFiltros = true;
+
+        try {
+            cmbAnioFiltro.removeAllItems();
+            cmbAnioFiltro.addItem("Todos");
+
+            for (String anio : anios) {
+                cmbAnioFiltro.addItem(anio);
+            }
+
+            if (anioAnterior != null
+                    && anioAnterior.matches("[0-9]{4}")) {
+
+                asegurarAnioEnFiltro(
+                        Integer.parseInt(anioAnterior)
+                );
+
+                cmbAnioFiltro.setSelectedItem(anioAnterior);
+
+            } else if ("Todos".equals(anioAnterior)) {
+                cmbAnioFiltro.setSelectedItem("Todos");
+
+            } else if (!anios.isEmpty()) {
+                cmbAnioFiltro.setSelectedItem(anios.get(0));
+
+            } else {
+                cmbAnioFiltro.setSelectedItem("Todos");
+            }
+
+            configurarDisponibilidadMes();
+
+        } finally {
+            actualizandoFiltros = estadoAnterior;
         }
     }
     
@@ -338,15 +521,26 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         return indice < 0 ? 0 : indice;
     }
 
+    //Este método se llamará con los eventos bloqueados para que restablecer el mes no provoque una segunda actualización.
     private void configurarDisponibilidadMes() {
         boolean hayAnioConcreto
                 = !"Todos".equals(obtenerAnioSeleccionado());
 
         cmbMesFiltro.setEnabled(hayAnioConcreto);
 
-        if (!hayAnioConcreto) {
+        if (!hayAnioConcreto
+                && cmbMesFiltro.getSelectedIndex() != 0) {
+
             cmbMesFiltro.setSelectedIndex(0);
         }
+
+        boolean hayMesConcreto = hayAnioConcreto
+                && obtenerMesSeleccionado() > 0;
+
+        btnPeriodoAnterior.setEnabled(hayMesConcreto);
+        btnPeriodoSiguiente.setEnabled(hayMesConcreto);
+
+        btnMesActual.setEnabled(true);
     }
 
     private void inicializarFiltros() {
@@ -382,12 +576,9 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             actualizandoFiltros = false;
         }
 
-        cargarTurnosEnTabla();
-        actualizarPanelResumen();
+        actualizarVistaDelPeriodo();
     }
-    
-    
-    
+
     private void limpiarControlAnual() {
         javax.swing.JLabel[] valores = {
             lblHorasTrabajadasVal,
@@ -504,21 +695,21 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         } catch (IllegalStateException e) {
             lblPeriodoNominaVal.setText(
-                    "No se ha podido cargar la nómina"
+                    "No se han podido cargar las complementarias"
             );
 
             lblComplNominaVal.setText("—");
+            lblAvisoPeriodoNomina.setText("");
 
             logger.log(
                     java.util.logging.Level.SEVERE,
-                    "Error al actualizar la nómina",
+                    "Error al actualizar las complementarias de nómina",
                     e
             );
         }
     }
-    
-    
-    
+
+
     //RESUMEN DEL PERIODO. METODOS PARA RELLENAR EL PANEL
     //Obtener el texto del periodo
     private String obtenerTextoPeriodoSeleccionado() {
@@ -545,7 +736,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         return nombreMes + " de " + anio;
     }
-    
+
     //Mostrar los valores en resumen periodo
     private void mostrarResumenPeriodo(
             BaseDeDatos.ResumenPeriodo resumen) {
@@ -555,6 +746,10 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         lblPeriodoSeleccionadoVal.setText(
                 obtenerTextoPeriodoSeleccionado()
+        );
+
+        lblFechasPeriodoVal.setText(
+                obtenerTextoFechasPeriodo()
         );
 
         lblHorasPlanificadasPeriodoVal.setText(
@@ -577,28 +772,53 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                 String.valueOf(resumen.diasTrabajados)
         );
 
-        lblComplementariasPeriodoVal.setText(
+        lblIrregularesPeriodoVal.setText(
                 String.format(
                         idioma,
                         "%.2f h",
-                        resumen.horasComplementarias
+                        resumen.horasIrregularesPos
                 )
         );
+
+        lblSabadosLibresPeriodoVal.setText(
+                String.valueOf(resumen.sabadosLibres)
+        );
+
+        lblFestivosPeriodoVal.setText(
+                String.valueOf(resumen.festivosTrabajados)
+        );
+
+        lblVacacionesPeriodoVal.setText(
+                String.valueOf(resumen.diasVacaciones)
+        );
     }
-    
+
     // Evitar valores antiguos si falla la carga
     private void limpiarResumenPeriodo() {
         lblPeriodoSeleccionadoVal.setText(
                 obtenerTextoPeriodoSeleccionado()
         );
 
-        lblHorasPlanificadasPeriodoVal.setText("—");
-        lblHorasEfectivasPeriodoVal.setText("—");
-        lblDiasTrabajadosPeriodoVal.setText("—");
-        lblComplementariasPeriodoVal.setText("—");
+        lblFechasPeriodoVal.setText(
+                obtenerTextoFechasPeriodo()
+        );
+
+        javax.swing.JLabel[] valores = {
+            lblHorasPlanificadasPeriodoVal,
+            lblHorasEfectivasPeriodoVal,
+            lblDiasTrabajadosPeriodoVal,
+            lblIrregularesPeriodoVal,
+            lblSabadosLibresPeriodoVal,
+            lblFestivosPeriodoVal,
+            lblVacacionesPeriodoVal
+        };
+
+        for (javax.swing.JLabel etiqueta : valores) {
+            etiqueta.setText("—");
+        }
     }
-    
-    
+
+
     //BOTÓN DE EDITAR DÍA CON OPCIÓN DE ELIMINAR DÍA
     private int mostrarEditorConEliminar(Object formulario, RegistroTurno turno) {
 
@@ -683,36 +903,30 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         );
     }
     
-    
     //Función para mostrar el calculo de las horas complementarias a cobrar en la nomina de la fecha de referencia
     private void actualizarResumenNomina() {
-        lblPeriodoNominaVal.setText("—");
         lblComplNominaVal.setText("—");
+        lblPeriodoNominaVal.setText("—");
+        lblAvisoPeriodoNomina.setText("");
 
         Trabajador empleado = BaseDeDatos.obtenerEmpleado();
 
         if (empleado == null) {
             lblPeriodoNominaVal.setText(
-                    "Sin empleado configurado"
+                    "Sin trabajador configurado"
             );
             return;
         }
 
+        String anio = obtenerAnioSeleccionado();
+        int mes = obtenerMesSeleccionado();
+
         BaseDeDatos.ResumenNomina resumen
                 = BaseDeDatos.calcularResumenNomina(
                         empleado.getId(),
-                        java.time.LocalDate.now()
+                        anio,
+                        mes
                 );
-
-        java.time.format.DateTimeFormatter formato
-                = java.time.format.DateTimeFormatter
-                        .ofPattern("dd/MM/yyyy");
-
-        lblPeriodoNominaVal.setText(
-                resumen.inicio.format(formato)
-                + " al "
-                + resumen.fin.format(formato)
-        );
 
         lblComplNominaVal.setText(
                 String.format(
@@ -721,9 +935,38 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                         resumen.horasComplementarias
                 )
         );
+
+        if ("Todos".equals(anio)) {
+            lblPeriodoNominaVal.setText(
+                    "Todos los registros disponibles"
+            );
+
+            lblAvisoPeriodoNomina.setText(
+                    "Sin intervalo de nómina concreto."
+            );
+
+            return;
+        }
+
+        java.time.format.DateTimeFormatter formato
+                = java.time.format.DateTimeFormatter
+                        .ofPattern("dd/MM/yyyy");
+
+        lblPeriodoNominaVal.setText(
+                "Periodo: "
+                + resumen.inicio.format(formato)
+                + "–"
+                + resumen.fin.format(formato)
+        );
+
+        lblAvisoPeriodoNomina.setText(
+                mes == 0
+                        ? "No coincide con el año natural."
+                        : "No coincide con el mes natural."
+        );
     }
-    
-    
+
+
     
     // Código para cambiar la apariencia de la interfaz con Flatlaf
     // Nota: Si en el futuro se añaden más temas (como IntelliJ o macOS), solo hay que añadir un nuevo case a este bloque.
@@ -1132,27 +1375,32 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         btnSincronizarCorreo = new javax.swing.JButton();
         btnConfiguracion = new javax.swing.JButton();
         jPaneldatos = new javax.swing.JPanel();
-        lblNombre = new javax.swing.JLabel();
-        lblApellidos = new javax.swing.JLabel();
-        lblJornadaSemanal = new javax.swing.JLabel();
-        lblHorasAnuales = new javax.swing.JLabel();
-        txtNombre = new javax.swing.JTextField();
-        txtApellidos = new javax.swing.JTextField();
-        txtHorasAnuales = new javax.swing.JTextField();
-        btnGuardarEmpleado = new javax.swing.JButton();
-        cmbJornadaSemanal = new javax.swing.JComboBox<>();
-        jPanel1 = new javax.swing.JPanel();
+        btnTrabajador = new javax.swing.JButton();
+        lblFichaTrabajador = new javax.swing.JLabel();
+        jPanelResumenPeriodo = new javax.swing.JPanel();
         lblPeriodoSeleccionado = new javax.swing.JLabel();
         lblPeriodoSeleccionadoVal = new javax.swing.JLabel();
         lblHorasPlanificadasPeriodo = new javax.swing.JLabel();
         lblHorasEfectivasPeriodo = new javax.swing.JLabel();
         lblDiasTrabajadosPeriodo = new javax.swing.JLabel();
-        lblComplementariasPeriodo = new javax.swing.JLabel();
         lblHorasPlanificadasPeriodoVal = new javax.swing.JLabel();
         lblHorasEfectivasPeriodoVal = new javax.swing.JLabel();
         lblDiasTrabajadosPeriodoVal = new javax.swing.JLabel();
-        lblComplementariasPeriodoVal = new javax.swing.JLabel();
-        jPanel2 = new javax.swing.JPanel();
+        lblAvisoPeriodoNomina = new javax.swing.JLabel();
+        lblPeriodoNominaVal = new javax.swing.JLabel();
+        lblComplementariasPeriodo = new javax.swing.JLabel();
+        lblComplNominaVal = new javax.swing.JLabel();
+        btnInfoComplementariasNomina = new javax.swing.JButton();
+        lblSabadosLibresPeriodo = new javax.swing.JLabel();
+        lblSabadosLibresPeriodoVal = new javax.swing.JLabel();
+        lblIrregularesPeriodo = new javax.swing.JLabel();
+        lblIrregularesPeriodoVal = new javax.swing.JLabel();
+        lblVacacionesPeriodo = new javax.swing.JLabel();
+        lblVacacionesPeriodoVal = new javax.swing.JLabel();
+        lblFestivosPeriodo = new javax.swing.JLabel();
+        lblFestivosPeriodoVal = new javax.swing.JLabel();
+        lblFechasPeriodoVal = new javax.swing.JLabel();
+        jPanelResumenAnual = new javax.swing.JPanel();
         lblAnioControlVal = new javax.swing.JLabel();
         lblHorasTrabajadas = new javax.swing.JLabel();
         lblHorasTrabajadasVal = new javax.swing.JLabel();
@@ -1176,16 +1424,18 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         btnInfoDomingosFestivosTrabajados = new javax.swing.JButton();
         lblDiasVacaciones = new javax.swing.JLabel();
         lblDiasVacacionesVal = new javax.swing.JLabel();
-        btnActualizarResumen = new javax.swing.JButton();
         lblAnyoSeleccionado = new javax.swing.JLabel();
-        jPanel4 = new javax.swing.JPanel();
-        lblComplNominaVal = new javax.swing.JLabel();
-        lblPeriodoNominaVal = new javax.swing.JLabel();
-        jPanel3 = new javax.swing.JPanel();
+        lblAvisosControlAnual = new javax.swing.JLabel();
+        jPanelFiltro = new javax.swing.JPanel();
         lblAnioFiltro = new javax.swing.JLabel();
         cmbAnioFiltro = new javax.swing.JComboBox<>();
         lblMesFiltro = new javax.swing.JLabel();
         cmbMesFiltro = new javax.swing.JComboBox<>();
+        btnPeriodoAnterior = new javax.swing.JButton();
+        btnPeriodoSiguiente = new javax.swing.JButton();
+        btnMesActual = new javax.swing.JButton();
+        btnActualizarResumen = new javax.swing.JButton();
+        jPanelEstado = new javax.swing.JPanel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -1194,6 +1444,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblTitulo.setText("GESTIÓN DE HORARIOS Y JORNADA");
         lblTitulo.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
 
+        btnAcercaDe.setBackground(new java.awt.Color(242, 242, 242));
         btnAcercaDe.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info.png"))); // NOI18N
         btnAcercaDe.setBorder(null);
         btnAcercaDe.addActionListener(this::btnAcercaDeActionPerformed);
@@ -1203,22 +1454,20 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jPanelTituloLayout.setHorizontalGroup(
             jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelTituloLayout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addGap(274, 274, 274)
                 .addComponent(lblTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addGap(120, 120, 120)
-                .addComponent(btnAcercaDe)
-                .addGap(25, 25, 25))
+                .addComponent(btnAcercaDe, javax.swing.GroupLayout.PREFERRED_SIZE, 29, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(16, 16, 16))
         );
         jPanelTituloLayout.setVerticalGroup(
             jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanelTituloLayout.createSequentialGroup()
-                .addGap(18, 18, 18)
-                .addComponent(lblTitulo, javax.swing.GroupLayout.PREFERRED_SIZE, 39, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap()
+                .addGroup(jPanelTituloLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(btnAcercaDe, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(lblTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanelTituloLayout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addComponent(btnAcercaDe)
-                .addGap(19, 19, 19))
         );
 
         tablaTurnos.setModel(new javax.swing.table.DefaultTableModel(
@@ -1299,7 +1548,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
                 .addGroup(jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(btnSincronizarCorreo, javax.swing.GroupLayout.PREFERRED_SIZE, 177, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnConfiguracion, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(24, Short.MAX_VALUE))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
         jPanelBotoneraLayout.setVerticalGroup(
             jPanelBotoneraLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1323,95 +1572,47 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         jPaneldatos.setMinimumSize(new java.awt.Dimension(40, 40));
         jPaneldatos.setPreferredSize(new java.awt.Dimension(300, 709));
 
-        lblNombre.setText("Nombre*");
+        btnTrabajador.setText("Trabajador...");
+        btnTrabajador.addActionListener(this::btnTrabajadorActionPerformed);
 
-        lblApellidos.setText("Apellidos*");
-
-        lblJornadaSemanal.setText("Jornada Semanal*");
-
-        lblHorasAnuales.setText("Horas Anuales*");
-
-        txtNombre.addActionListener(this::txtNombreActionPerformed);
-
-        btnGuardarEmpleado.setText("Guardar/Actualizar datos");
-        btnGuardarEmpleado.setBorder(javax.swing.BorderFactory.createEtchedBorder());
-        btnGuardarEmpleado.setMaximumSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.setMinimumSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.setPreferredSize(new java.awt.Dimension(177, 24));
-        btnGuardarEmpleado.addActionListener(this::btnGuardarEmpleadoActionPerformed);
-
-        cmbJornadaSemanal.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "12.0", "20.0", "25.0", "30.0", "40.0" }));
+        lblFichaTrabajador.setText("Sin trabajador configurado");
 
         javax.swing.GroupLayout jPaneldatosLayout = new javax.swing.GroupLayout(jPaneldatos);
         jPaneldatos.setLayout(jPaneldatosLayout);
         jPaneldatosLayout.setHorizontalGroup(
             jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPaneldatosLayout.createSequentialGroup()
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                        .addGap(20, 20, 20)
-                        .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)
-                                .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)
-                                .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)
-                                .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addGroup(jPaneldatosLayout.createSequentialGroup()
-                                .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)
-                                .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                    .addGroup(jPaneldatosLayout.createSequentialGroup()
-                        .addGap(88, 88, 88)
-                        .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(12, Short.MAX_VALUE))
+                .addContainerGap()
+                .addComponent(lblFichaTrabajador)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(btnTrabajador)
+                .addContainerGap())
         );
         jPaneldatosLayout.setVerticalGroup(
             jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPaneldatosLayout.createSequentialGroup()
-                .addGap(16, 16, 16)
+                .addContainerGap()
                 .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(txtNombre, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(txtApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblApellidos, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(15, 15, 15)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(cmbJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblJornadaSemanal, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(8, 8, 8)
-                .addGroup(jPaneldatosLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(txtHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lblHorasAnuales, javax.swing.GroupLayout.PREFERRED_SIZE, 16, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(btnGuardarEmpleado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(lblFichaTrabajador)
+                    .addComponent(btnTrabajador))
+                .addGap(0, 6, Short.MAX_VALUE))
         );
 
-        jPanel1.setBorder(javax.swing.BorderFactory.createTitledBorder("Resumen del periodo"));
+        jPanelResumenPeriodo.setBorder(javax.swing.BorderFactory.createTitledBorder("Resumen del periodo"));
 
         lblPeriodoSeleccionado.setText("Periodo:");
 
-        lblPeriodoSeleccionadoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         lblPeriodoSeleccionadoVal.setText("-");
         lblPeriodoSeleccionadoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         lblPeriodoSeleccionadoVal.setOpaque(true);
 
         lblHorasPlanificadasPeriodo.setText("Horas planificadas:");
+        lblHorasPlanificadasPeriodo.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblHorasEfectivasPeriodo.setText("Horas efectivas:");
+        lblHorasEfectivasPeriodo.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblDiasTrabajadosPeriodo.setText("Días con trabajo:");
-
-        lblComplementariasPeriodo.setText("Complementarias:");
 
         lblHorasPlanificadasPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
         lblHorasPlanificadasPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
@@ -1434,74 +1635,189 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblDiasTrabajadosPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         lblDiasTrabajadosPeriodoVal.setOpaque(true);
 
-        lblComplementariasPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblComplementariasPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        lblComplementariasPeriodoVal.setText("0,00 h");
-        lblComplementariasPeriodoVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblComplementariasPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblComplementariasPeriodoVal.setOpaque(true);
+        lblAvisoPeriodoNomina.setText("No coincide con el mes o año natural.");
+        lblAvisoPeriodoNomina.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblAvisoPeriodoNomina.setOpaque(true);
 
-        javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
-        jPanel1.setLayout(jPanel1Layout);
-        jPanel1Layout.setHorizontalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel1Layout.createSequentialGroup()
+        lblPeriodoNominaVal.setText("Periodo: ");
+        lblPeriodoNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblPeriodoNominaVal.setOpaque(true);
+
+        lblComplementariasPeriodo.setText("Complementarias de nómina:");
+
+        lblComplNominaVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblComplNominaVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblComplNominaVal.setText("0,00 h");
+        lblComplNominaVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblComplNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblComplNominaVal.setOpaque(true);
+
+        btnInfoComplementariasNomina.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info.png"))); // NOI18N
+        btnInfoComplementariasNomina.setBorder(null);
+        btnInfoComplementariasNomina.setBorderPainted(false);
+        btnInfoComplementariasNomina.setContentAreaFilled(false);
+        btnInfoComplementariasNomina.addActionListener(this::btnInfoComplementariasNominaActionPerformed);
+
+        lblSabadosLibresPeriodo.setText("Sábados libres:");
+        lblSabadosLibresPeriodo.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
+
+        lblSabadosLibresPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblSabadosLibresPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblSabadosLibresPeriodoVal.setText("0");
+        lblSabadosLibresPeriodoVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblSabadosLibresPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblSabadosLibresPeriodoVal.setOpaque(true);
+
+        lblIrregularesPeriodo.setText("Horas Irregulares (+):");
+        lblIrregularesPeriodo.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
+
+        lblIrregularesPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblIrregularesPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblIrregularesPeriodoVal.setText("0,00 h");
+        lblIrregularesPeriodoVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblIrregularesPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblIrregularesPeriodoVal.setOpaque(true);
+
+        lblVacacionesPeriodo.setText("Vacaciones registradas:");
+
+        lblVacacionesPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblVacacionesPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblVacacionesPeriodoVal.setText("0");
+        lblVacacionesPeriodoVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblVacacionesPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblVacacionesPeriodoVal.setOpaque(true);
+
+        lblFestivosPeriodo.setText("Domingos/festivos con turno:");
+        lblFestivosPeriodo.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
+
+        lblFestivosPeriodoVal.setBackground(new java.awt.Color(255, 255, 255));
+        lblFestivosPeriodoVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblFestivosPeriodoVal.setText("0");
+        lblFestivosPeriodoVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+        lblFestivosPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblFestivosPeriodoVal.setOpaque(true);
+
+        lblFechasPeriodoVal.setText("-");
+        lblFechasPeriodoVal.setToolTipText("");
+        lblFechasPeriodoVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+        lblFechasPeriodoVal.setOpaque(true);
+
+        javax.swing.GroupLayout jPanelResumenPeriodoLayout = new javax.swing.GroupLayout(jPanelResumenPeriodo);
+        jPanelResumenPeriodo.setLayout(jPanelResumenPeriodoLayout);
+        jPanelResumenPeriodoLayout.setHorizontalGroup(
+            jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
                 .addGap(26, 26, 26)
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(lblPeriodoSeleccionado)
-                    .addComponent(lblHorasPlanificadasPeriodo)
-                    .addComponent(lblHorasEfectivasPeriodo))
-                .addGap(29, 29, 29)
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(lblHorasEfectivasPeriodoVal, javax.swing.GroupLayout.DEFAULT_SIZE, 95, Short.MAX_VALUE)
-                    .addComponent(lblHorasPlanificadasPeriodoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(lblPeriodoSeleccionadoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addComponent(lblComplementariasPeriodo)
-                        .addGap(26, 26, 26)
-                        .addComponent(lblComplementariasPeriodoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                    .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addComponent(lblDiasTrabajadosPeriodo)
-                        .addGap(35, 35, 35)
-                        .addComponent(lblDiasTrabajadosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 95, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addGap(17, 17, 17))
-        );
-        jPanel1Layout.setVerticalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel1Layout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(lblHorasEfectivasPeriodo)
-                    .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                    .addComponent(lblPeriodoSeleccionado)
-                                    .addComponent(lblPeriodoSeleccionadoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(lblAvisoPeriodoNomina, javax.swing.GroupLayout.PREFERRED_SIZE, 268, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblComplementariasPeriodo)
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addComponent(lblPeriodoNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 268, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 59, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(btnInfoComplementariasNomina))
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(lblHorasPlanificadasPeriodo)
+                            .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                .addComponent(lblIrregularesPeriodo, javax.swing.GroupLayout.Alignment.TRAILING)
+                                .addComponent(lblHorasEfectivasPeriodo)))
+                        .addGap(18, 18, 18)
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(lblIrregularesPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 95, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addComponent(lblHorasEfectivasPeriodoVal, javax.swing.GroupLayout.DEFAULT_SIZE, 95, Short.MAX_VALUE)
+                                    .addComponent(lblHorasPlanificadasPeriodoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                                .addGap(50, 50, 50)
+                                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(lblFestivosPeriodo)
+                                    .addComponent(lblDiasTrabajadosPeriodo))
                                 .addGap(18, 18, 18)
-                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                    .addComponent(lblHorasPlanificadasPeriodo)
-                                    .addComponent(lblDiasTrabajadosPeriodo)))
+                                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                                        .addComponent(lblDiasTrabajadosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 95, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addGap(52, 52, 52)
+                                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(lblSabadosLibresPeriodo)
+                                            .addComponent(lblVacacionesPeriodo)))
+                                    .addComponent(lblFestivosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 95, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                                        .addGap(24, 24, 24)
+                                        .addComponent(lblVacacionesPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 93, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                        .addComponent(lblSabadosLibresPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 93, javax.swing.GroupLayout.PREFERRED_SIZE))))))
+                    .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                        .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanelResumenPeriodoLayout.createSequentialGroup()
+                            .addComponent(lblPeriodoSeleccionado)
+                            .addGap(18, 18, 18)
+                            .addComponent(lblPeriodoSeleccionadoVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                        .addComponent(lblFechasPeriodoVal, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 299, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+        jPanelResumenPeriodoLayout.setVerticalGroup(
+            jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                .addContainerGap()
+                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblPeriodoSeleccionado)
+                    .addComponent(lblPeriodoSeleccionadoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(3, 3, 3)
+                .addComponent(lblFechasPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addComponent(lblDiasTrabajadosPeriodo)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(lblFestivosPeriodo))
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(lblHorasPlanificadasPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(lblDiasTrabajadosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addComponent(lblHorasPlanificadasPeriodo))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(lblHorasEfectivasPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(lblComplementariasPeriodoVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(lblComplementariasPeriodo, javax.swing.GroupLayout.Alignment.TRAILING))))
-                .addContainerGap(14, Short.MAX_VALUE))
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(lblHorasEfectivasPeriodoVal, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(lblHorasEfectivasPeriodo, javax.swing.GroupLayout.Alignment.TRAILING)))
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addComponent(lblDiasTrabajadosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(lblFestivosPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPanelResumenPeriodoLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addComponent(lblSabadosLibresPeriodo)
+                            .addComponent(lblSabadosLibresPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addComponent(lblVacacionesPeriodo)
+                            .addComponent(lblVacacionesPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 9, Short.MAX_VALUE)
+                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(lblIrregularesPeriodo)
+                    .addComponent(lblIrregularesPeriodoVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(22, 22, 22)
+                .addComponent(lblComplementariasPeriodo)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPanelResumenPeriodoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                        .addComponent(lblPeriodoNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(btnInfoComplementariasNomina, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(lblAvisoPeriodoNomina, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(41, Short.MAX_VALUE))
         );
 
-        jPanel2.setBorder(javax.swing.BorderFactory.createTitledBorder("Control Anual"));
+        jPanelResumenAnual.setBorder(javax.swing.BorderFactory.createTitledBorder("Referencia Anual"));
 
         lblAnioControlVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         lblAnioControlVal.setText("-");
         lblAnioControlVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         lblAnioControlVal.setOpaque(true);
 
-        lblHorasTrabajadas.setText("Horas planificadas del año:");
+        lblHorasTrabajadas.setText("Horas planificadas:");
 
         lblHorasTrabajadasVal.setBackground(new java.awt.Color(255, 255, 255));
         lblHorasTrabajadasVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
@@ -1513,7 +1829,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblAvisoHorasTrabajadas.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
         lblAvisoHorasTrabajadas.setToolTipText("Atención: Se ha superado el número de horas anuales especificadas.");
 
-        lblDiasTrabajados.setText("Dias Trabajados:");
+        lblDiasTrabajados.setText("Días con turno:");
         lblDiasTrabajados.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblDiasTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
@@ -1526,7 +1842,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblAvisoDiasTrabajoMaximos.setIcon(new javax.swing.ImageIcon(getClass().getResource("/mycompany/apphorario/info2.png"))); // NOI18N
         lblAvisoDiasTrabajoMaximos.setToolTipText("Atención: Se ha superado el máximo anual de 224 días trabajados establecido por el convenio de Primark.");
 
-        lblHorasIrregularesPos.setText("Horas Irregulares (+):");
+        lblHorasIrregularesPos.setText("Irregulares acumuladas:");
         lblHorasIrregularesPos.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblHorasIrregularesPosVal.setBackground(new java.awt.Color(255, 255, 255));
@@ -1541,7 +1857,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         btnInfoHorasIrregularesPos.setContentAreaFilled(false);
         btnInfoHorasIrregularesPos.addActionListener(this::btnInfoHorasIrregularesPosActionPerformed);
 
-        lblPorcentajeHorasIrregulares.setText("% horas Irregulares +");
+        lblPorcentajeHorasIrregulares.setText("% horas Irregulares (+)");
         lblPorcentajeHorasIrregulares.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblPorcentajeHorasIrregularesVal.setBackground(new java.awt.Color(255, 255, 255));
@@ -1578,7 +1894,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblSabadoslibresVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         lblSabadoslibresVal.setOpaque(true);
 
-        lblFestivosTrabajados.setText("Domingos/Festivos trab.");
+        lblFestivosTrabajados.setText("Domingos/Festivos con turno:");
         lblFestivosTrabajados.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
 
         lblFestivosTrabajadosVal.setBackground(new java.awt.Color(255, 255, 255));
@@ -1601,155 +1917,114 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         lblDiasVacacionesVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         lblDiasVacacionesVal.setOpaque(true);
 
-        btnActualizarResumen.setText("Actualizar Estadísticas");
-        btnActualizarResumen.setBorder(javax.swing.BorderFactory.createEtchedBorder());
-        btnActualizarResumen.setMaximumSize(new java.awt.Dimension(177, 24));
-        btnActualizarResumen.setMinimumSize(new java.awt.Dimension(177, 24));
-        btnActualizarResumen.setPreferredSize(new java.awt.Dimension(177, 23));
-        btnActualizarResumen.addActionListener(this::btnActualizarResumenActionPerformed);
+        lblAnyoSeleccionado.setText("Referencia anual:");
 
-        lblAnyoSeleccionado.setText("Año:");
+        lblAvisosControlAnual.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        lblAvisosControlAnual.setText("-");
 
-        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
-        jPanel2.setLayout(jPanel2Layout);
-        jPanel2Layout.setHorizontalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel2Layout.createSequentialGroup()
+        javax.swing.GroupLayout jPanelResumenAnualLayout = new javax.swing.GroupLayout(jPanelResumenAnual);
+        jPanelResumenAnual.setLayout(jPanelResumenAnualLayout);
+        jPanelResumenAnualLayout.setHorizontalGroup(
+            jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
                 .addContainerGap()
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addComponent(lblPorcentajeHorasIrregulares)
-                        .addGroup(jPanel2Layout.createSequentialGroup()
-                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                .addComponent(lblDiasTrabajados)
-                                .addComponent(lblHorasIrregularesPos)
-                                .addComponent(lblHorasComplementarias)
-                                .addComponent(lblSabadosLibres)
-                                .addComponent(lblFestivosTrabajados)
-                                .addComponent(lblDiasVacaciones))
-                            .addGap(25, 25, 25)
-                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)
-                                .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
-                        .addGroup(jPanel2Layout.createSequentialGroup()
-                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                .addComponent(lblHorasTrabajadas)
-                                .addComponent(lblAnyoSeleccionado))
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(lblAnioControlVal, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)))))
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(lblPorcentajeHorasIrregulares)
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(lblDiasTrabajados)
+                            .addComponent(lblHorasIrregularesPos)
+                            .addComponent(lblHorasComplementarias)
+                            .addComponent(lblSabadosLibres)
+                            .addComponent(lblFestivosTrabajados)
+                            .addComponent(lblDiasVacaciones)
+                            .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                                .addGap(67, 67, 67)
+                                .addComponent(lblAvisosControlAnual, javax.swing.GroupLayout.PREFERRED_SIZE, 82, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addGap(25, 25, 25)
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)
+                            .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                        .addComponent(lblAnyoSeleccionado)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(lblAnioControlVal, javax.swing.GroupLayout.PREFERRED_SIZE, 70, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                        .addComponent(lblHorasTrabajadas)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 70, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblAvisoDiasTrabajoMaximos, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnInfoHorasIrregularesPos, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblAvisoHorasTrabajadas, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
                         .addComponent(btnInfoPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(lblAvisoPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE))
                     .addComponent(btnInfoDomingosFestivosTrabajados, javax.swing.GroupLayout.PREFERRED_SIZE, 24, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap(32, Short.MAX_VALUE))
         );
-        jPanel2Layout.setVerticalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel2Layout.createSequentialGroup()
+        jPanelResumenAnualLayout.setVerticalGroup(
+            jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
                 .addContainerGap()
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(lblAnioControlVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(lblAnyoSeleccionado))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(lblHorasTrabajadas)
                             .addComponent(lblHorasTrabajadasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addComponent(lblAvisoHorasTrabajadas, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblDiasTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblAvisoDiasTrabajoMaximos, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblDiasTrabajados, javax.swing.GroupLayout.Alignment.TRAILING))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addComponent(lblHorasIrregularesPos)
                     .addComponent(lblHorasIrregularesPosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnInfoHorasIrregularesPos, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblPorcentajeHorasIrregularesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnInfoPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblAvisoPorcentajeHorasIrregulares, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(jPanelResumenAnualLayout.createSequentialGroup()
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(lblHorasComplementarias)
                             .addComponent(lblHorasComplementariasVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(lblSabadoslibresVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(lblSabadosLibres))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(lblFestivosTrabajadosVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(lblFestivosTrabajados)))
                     .addComponent(btnInfoDomingosFestivosTrabajados, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                .addGroup(jPanelResumenAnualLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addComponent(lblDiasVacacionesVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lblDiasVacaciones))
-                .addGap(18, 18, 18)
-                .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGap(38, 38, 38)
+                .addComponent(lblAvisosControlAnual)
+                .addContainerGap(54, Short.MAX_VALUE))
         );
 
-        jPanel4.setBorder(javax.swing.BorderFactory.createTitledBorder("Complementarias de Nómina Actual"));
-
-        lblComplNominaVal.setBackground(new java.awt.Color(255, 255, 255));
-        lblComplNominaVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        lblComplNominaVal.setText("0,00 h");
-        lblComplNominaVal.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
-        lblComplNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblComplNominaVal.setOpaque(true);
-
-        lblPeriodoNominaVal.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        lblPeriodoNominaVal.setText("-");
-        lblPeriodoNominaVal.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-        lblPeriodoNominaVal.setOpaque(true);
-
-        javax.swing.GroupLayout jPanel4Layout = new javax.swing.GroupLayout(jPanel4);
-        jPanel4.setLayout(jPanel4Layout);
-        jPanel4Layout.setHorizontalGroup(
-            jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel4Layout.createSequentialGroup()
-                .addContainerGap(64, Short.MAX_VALUE)
-                .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel4Layout.createSequentialGroup()
-                        .addComponent(lblPeriodoNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 158, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(55, 55, 55))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel4Layout.createSequentialGroup()
-                        .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 59, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(105, 105, 105))))
-        );
-        jPanel4Layout.setVerticalGroup(
-            jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel4Layout.createSequentialGroup()
-                .addGap(12, 12, 12)
-                .addComponent(lblPeriodoNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(lblComplNominaVal, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-
-        jPanel3.setBorder(javax.swing.BorderFactory.createTitledBorder("Filtro"));
+        jPanelFiltro.setBorder(javax.swing.BorderFactory.createTitledBorder("Filtro"));
 
         lblAnioFiltro.setText("Año:");
 
@@ -1759,33 +2034,70 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         cmbMesFiltro.addActionListener(this::cmbMesFiltroActionPerformed);
 
-        javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
-        jPanel3.setLayout(jPanel3Layout);
-        jPanel3Layout.setHorizontalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel3Layout.createSequentialGroup()
-                .addGap(26, 26, 26)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+        btnPeriodoAnterior.setText("Anterior");
+        btnPeriodoAnterior.addActionListener(this::btnPeriodoAnteriorActionPerformed);
+
+        btnPeriodoSiguiente.setText("Siguiente");
+        btnPeriodoSiguiente.addActionListener(this::btnPeriodoSiguienteActionPerformed);
+
+        btnMesActual.setText("Mes Actual");
+        btnMesActual.addActionListener(this::btnMesActualActionPerformed);
+
+        btnActualizarResumen.setText("Actualizar Estadísticas");
+        btnActualizarResumen.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        btnActualizarResumen.setMaximumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setMinimumSize(new java.awt.Dimension(177, 24));
+        btnActualizarResumen.setPreferredSize(new java.awt.Dimension(177, 23));
+        btnActualizarResumen.addActionListener(this::btnActualizarResumenActionPerformed);
+
+        javax.swing.GroupLayout jPanelFiltroLayout = new javax.swing.GroupLayout(jPanelFiltro);
+        jPanelFiltro.setLayout(jPanelFiltroLayout);
+        jPanelFiltroLayout.setHorizontalGroup(
+            jPanelFiltroLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelFiltroLayout.createSequentialGroup()
+                .addGap(29, 29, 29)
+                .addComponent(lblAnioFiltro)
+                .addGap(18, 18, 18)
+                .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(58, 58, 58)
+                .addComponent(lblMesFiltro)
+                .addGap(18, 18, 18)
+                .addComponent(cmbMesFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addComponent(btnPeriodoAnterior)
+                .addGap(18, 18, 18)
+                .addComponent(btnPeriodoSiguiente)
+                .addGap(18, 18, 18)
+                .addComponent(btnMesActual)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap())
+        );
+        jPanelFiltroLayout.setVerticalGroup(
+            jPanelFiltroLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanelFiltroLayout.createSequentialGroup()
+                .addContainerGap()
+                .addGroup(jPanelFiltroLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblAnioFiltro)
-                    .addComponent(lblMesFiltro))
-                .addGap(83, 83, 83)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(cmbMesFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(lblMesFiltro)
+                    .addComponent(cmbMesFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(btnPeriodoAnterior)
+                    .addComponent(btnPeriodoSiguiente)
+                    .addComponent(btnMesActual)
+                    .addComponent(btnActualizarResumen, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
-        jPanel3Layout.setVerticalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel3Layout.createSequentialGroup()
-                .addGap(16, 16, 16)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblAnioFiltro)
-                    .addComponent(cmbAnioFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(15, 15, 15)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblMesFiltro)
-                    .addComponent(cmbMesFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+
+        javax.swing.GroupLayout jPanelEstadoLayout = new javax.swing.GroupLayout(jPanelEstado);
+        jPanelEstado.setLayout(jPanelEstadoLayout);
+        jPanelEstadoLayout.setHorizontalGroup(
+            jPanelEstadoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 1204, Short.MAX_VALUE)
+        );
+        jPanelEstadoLayout.setVerticalGroup(
+            jPanelEstadoLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 100, Short.MAX_VALUE)
         );
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -1793,39 +2105,43 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, 330, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jPanel3, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanel2, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addComponent(jPanelResumenPeriodo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jPanelResumenAnual, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(31, 31, 31))
+            .addComponent(jPanelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+            .addGroup(layout.createSequentialGroup()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jPanelBotonera, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanelTitulo, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addComponent(jPanel4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addContainerGap())
-                    .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.Alignment.TRAILING)))
+                        .addContainerGap()
+                        .addComponent(jPanelBotonera, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(jPaneldatos, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, 1272, Short.MAX_VALUE)
+                    .addComponent(jPanelFiltro, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(jPanelEstado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(0, 0, Short.MAX_VALUE)))
+                .addContainerGap())
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, 201, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanel3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+            .addGroup(layout.createSequentialGroup()
                 .addComponent(jPanelTitulo, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(1, 1, 1)
+                .addComponent(jPaneldatos, javax.swing.GroupLayout.PREFERRED_SIZE, 58, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanel4, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addComponent(jPanelFiltro, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.PREFERRED_SIZE, 388, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jPanelResumenPeriodo, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jPanelResumenAnual, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(jPanelBotonera, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanelBotonera, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(jScrollPane1Tabla, javax.swing.GroupLayout.PREFERRED_SIZE, 263, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jPanelEstado, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(12, Short.MAX_VALUE))
         );
 
         pack();
@@ -2201,7 +2517,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
         String mensaje = "Periodo: " + periodo
                 + "\nTurnos: " + turnos.size()
-                + "\nSolo fechas desde hoy en adelante."
                 + "\n\nArchivo:\n" + destino.getAbsolutePath();
 
         if (destino.exists()) {
@@ -2412,7 +2727,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
     private void cmbAnioFiltroActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cmbAnioFiltroActionPerformed
         // Recargar la tabla y las estadísticas cuando el usuario cambie el año
-
         if (actualizandoFiltros) {
             return;
         }
@@ -2425,9 +2739,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             actualizandoFiltros = false;
         }
 
-        cargarTurnosEnTabla();
-        actualizarPanelResumen();
-
+        actualizarVistaDelPeriodo();
     }//GEN-LAST:event_cmbAnioFiltroActionPerformed
 
     private void btnActualizarResumenActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnActualizarResumenActionPerformed
@@ -2443,50 +2755,6 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             "Actualización",
             javax.swing.JOptionPane.INFORMATION_MESSAGE);
     }//GEN-LAST:event_btnActualizarResumenActionPerformed
-
-    private void btnGuardarEmpleadoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuardarEmpleadoActionPerformed
-        // TODO add your handling code here:
-        try {
-            String nombre = txtNombre.getText().trim();
-            String apellidos = txtApellidos.getText().trim();
-
-            // Leemos la opción seleccionada del desplegable
-            String jornadaSeleccionada = (String) cmbJornadaSemanal.getSelectedItem();
-            double jornada = Double.parseDouble(jornadaSeleccionada);
-
-            double horasAnuales = Double.parseDouble(txtHorasAnuales.getText().trim());
-
-            if (nombre.isEmpty() || apellidos.isEmpty()) {
-                javax.swing.JOptionPane.showMessageDialog(this,
-                    "Por favor, rellena tu nombre y apellidos.",
-                    "Campos vacíos",
-                    javax.swing.JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            // Creamos el objeto Trabajador y lo guardamos
-            Trabajador trabajador = new Trabajador(1, nombre, apellidos, jornada, horasAnuales);
-            BaseDeDatos.guardarOActualizarEmpleado(trabajador);
-
-            // Recalculamos las estadísticas inmediatamente con la nueva jornada
-            actualizarPanelResumen();
-
-            javax.swing.JOptionPane.showMessageDialog(this,
-                "Datos del contrato guardados con éxito",
-                "Guardado",
-                javax.swing.JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (NumberFormatException e) {
-            javax.swing.JOptionPane.showMessageDialog(this,
-                "Asegúrate de introducir un valor numérico válido en las horas anuales.",
-                "Error de formato",
-                javax.swing.JOptionPane.ERROR_MESSAGE);
-        }
-    }//GEN-LAST:event_btnGuardarEmpleadoActionPerformed
-
-    private void txtNombreActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_txtNombreActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_txtNombreActionPerformed
 
     private void btnInfoHorasIrregularesPosActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnInfoHorasIrregularesPosActionPerformed
         mostrarInformacionResumen(
@@ -2549,9 +2817,72 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         if (actualizandoFiltros) {
             return;
         }
-        cargarTurnosEnTabla();
- 
+
+        actualizandoFiltros = true;
+
+        try {
+            configurarDisponibilidadMes();
+        } finally {
+            actualizandoFiltros = false;
+        }
+
+        actualizarVistaDelPeriodo();
     }//GEN-LAST:event_cmbMesFiltroActionPerformed
+
+    private void btnTrabajadorActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnTrabajadorActionPerformed
+        Trabajador trabajador = BaseDeDatos.obtenerEmpleado();
+
+        DialogoTrabajador dialogo
+                = new DialogoTrabajador(this, trabajador);
+
+        dialogo.setVisible(true);
+
+        if (dialogo.isGuardado()) {
+            cargarDatosEmpleado();
+
+            cargarTurnosEnTabla();
+            actualizarPanelResumen();
+        }
+    }//GEN-LAST:event_btnTrabajadorActionPerformed
+
+    private void btnPeriodoAnteriorActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPeriodoAnteriorActionPerformed
+        desplazarPeriodo(-1);
+    }//GEN-LAST:event_btnPeriodoAnteriorActionPerformed
+
+    private void btnPeriodoSiguienteActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPeriodoSiguienteActionPerformed
+        desplazarPeriodo(1);
+    }//GEN-LAST:event_btnPeriodoSiguienteActionPerformed
+
+    private void btnMesActualActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnMesActualActionPerformed
+        seleccionarPeriodo(
+                java.time.YearMonth.now()
+        );
+    }//GEN-LAST:event_btnMesActualActionPerformed
+
+    private void btnInfoComplementariasNominaActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnInfoComplementariasNominaActionPerformed
+        mostrarInformacionResumen(
+                "Complementarias de nómina",
+                "<html><body style='width: 460px;'>"
+                + "<p>Este indicador suma las horas complementarias "
+                + "registradas para la selección actual.</p>"
+                + "<ul>"
+                + "<li>Con un mes concreto: desde el día 23 del mes "
+                + "anterior hasta el día 22 del mes seleccionado.</li>"
+                + "<li>Con todos los meses de un año: desde el "
+                + "23 de diciembre del año anterior hasta el "
+                + "22 de diciembre del año seleccionado.</li>"
+                + "<li>Con todos los años: suma de todos los "
+                + "registros disponibles.</li>"
+                + "</ul>"
+                + "<p>Las fechas inicial y final están incluidas.</p>"
+                + "<p>La tabla utiliza el periodo natural seleccionado. "
+                + "Por eso, su columna de complementarias puede "
+                + "no sumar lo mismo que este indicador.</p>"
+                + "<p>El resultado solo incluye los datos registrados: "
+                + "no comprueba si faltan cuadrantes por importar.</p>"
+                + "</body></html>"
+        );
+    }//GEN-LAST:event_btnInfoComplementariasNominaActionPerformed
 
     /**
      * @param args the command line arguments
@@ -2596,44 +2927,50 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JButton btnConfiguracion;
     private javax.swing.JButton btnEditarTurno;
     private javax.swing.JButton btnExportarCalendar;
-    private javax.swing.JButton btnGuardarEmpleado;
     private javax.swing.JButton btnHorasComplementarias;
     private javax.swing.JButton btnImportarPDF;
+    private javax.swing.JButton btnInfoComplementariasNomina;
     private javax.swing.JButton btnInfoDomingosFestivosTrabajados;
     private javax.swing.JButton btnInfoHorasIrregularesPos;
     private javax.swing.JButton btnInfoPorcentajeHorasIrregulares;
+    private javax.swing.JButton btnMesActual;
+    private javax.swing.JButton btnPeriodoAnterior;
+    private javax.swing.JButton btnPeriodoSiguiente;
     private javax.swing.JButton btnSincronizarCorreo;
     private javax.swing.JButton btnSubirGoogleCalendar;
+    private javax.swing.JButton btnTrabajador;
     private javax.swing.JComboBox<String> cmbAnioFiltro;
-    private javax.swing.JComboBox<String> cmbJornadaSemanal;
     private javax.swing.JComboBox<String> cmbMesFiltro;
-    private javax.swing.JPanel jPanel1;
-    private javax.swing.JPanel jPanel2;
-    private javax.swing.JPanel jPanel3;
-    private javax.swing.JPanel jPanel4;
     private javax.swing.JPanel jPanelBotonera;
+    private javax.swing.JPanel jPanelEstado;
+    private javax.swing.JPanel jPanelFiltro;
+    private javax.swing.JPanel jPanelResumenAnual;
+    private javax.swing.JPanel jPanelResumenPeriodo;
     private javax.swing.JPanel jPanelTitulo;
     private javax.swing.JPanel jPaneldatos;
     private javax.swing.JScrollPane jScrollPane1Tabla;
     private javax.swing.JLabel lblAnioControlVal;
     private javax.swing.JLabel lblAnioFiltro;
     private javax.swing.JLabel lblAnyoSeleccionado;
-    private javax.swing.JLabel lblApellidos;
     private javax.swing.JLabel lblAvisoDiasTrabajoMaximos;
     private javax.swing.JLabel lblAvisoHorasTrabajadas;
+    private javax.swing.JLabel lblAvisoPeriodoNomina;
     private javax.swing.JLabel lblAvisoPorcentajeHorasIrregulares;
+    private javax.swing.JLabel lblAvisosControlAnual;
     private javax.swing.JLabel lblComplNominaVal;
     private javax.swing.JLabel lblComplementariasPeriodo;
-    private javax.swing.JLabel lblComplementariasPeriodoVal;
     private javax.swing.JLabel lblDiasTrabajados;
     private javax.swing.JLabel lblDiasTrabajadosPeriodo;
     private javax.swing.JLabel lblDiasTrabajadosPeriodoVal;
     private javax.swing.JLabel lblDiasTrabajadosVal;
     private javax.swing.JLabel lblDiasVacaciones;
     private javax.swing.JLabel lblDiasVacacionesVal;
+    private javax.swing.JLabel lblFechasPeriodoVal;
+    private javax.swing.JLabel lblFestivosPeriodo;
+    private javax.swing.JLabel lblFestivosPeriodoVal;
     private javax.swing.JLabel lblFestivosTrabajados;
     private javax.swing.JLabel lblFestivosTrabajadosVal;
-    private javax.swing.JLabel lblHorasAnuales;
+    private javax.swing.JLabel lblFichaTrabajador;
     private javax.swing.JLabel lblHorasComplementarias;
     private javax.swing.JLabel lblHorasComplementariasVal;
     private javax.swing.JLabel lblHorasEfectivasPeriodo;
@@ -2644,20 +2981,21 @@ public class VentanaPrincipal extends javax.swing.JFrame {
     private javax.swing.JLabel lblHorasPlanificadasPeriodoVal;
     private javax.swing.JLabel lblHorasTrabajadas;
     private javax.swing.JLabel lblHorasTrabajadasVal;
-    private javax.swing.JLabel lblJornadaSemanal;
+    private javax.swing.JLabel lblIrregularesPeriodo;
+    private javax.swing.JLabel lblIrregularesPeriodoVal;
     private javax.swing.JLabel lblMesFiltro;
-    private javax.swing.JLabel lblNombre;
     private javax.swing.JLabel lblPeriodoNominaVal;
     private javax.swing.JLabel lblPeriodoSeleccionado;
     private javax.swing.JLabel lblPeriodoSeleccionadoVal;
     private javax.swing.JLabel lblPorcentajeHorasIrregulares;
     private javax.swing.JLabel lblPorcentajeHorasIrregularesVal;
     private javax.swing.JLabel lblSabadosLibres;
+    private javax.swing.JLabel lblSabadosLibresPeriodo;
+    private javax.swing.JLabel lblSabadosLibresPeriodoVal;
     private javax.swing.JLabel lblSabadoslibresVal;
     private javax.swing.JLabel lblTitulo;
+    private javax.swing.JLabel lblVacacionesPeriodo;
+    private javax.swing.JLabel lblVacacionesPeriodoVal;
     private javax.swing.JTable tablaTurnos;
-    private javax.swing.JTextField txtApellidos;
-    private javax.swing.JTextField txtHorasAnuales;
-    private javax.swing.JTextField txtNombre;
     // End of variables declaration//GEN-END:variables
 }

@@ -68,47 +68,88 @@ public class BaseDeDatos {
             System.out.println("Error al inicializar la base de datos: " + e.getMessage());
         }
     }
-    
+
     //Método para guardar o actualizar la ficha de empleado
-    public static void guardarOActualizarEmpleado (Trabajador t) {
-        // Consultamos la tabla "empleado"
-        String sqlCheck = "SELECT COUNT(*) FROM empleado";
-        
-        try (Connection conn = conectar();
-                PreparedStatement pstmtCheck = conn.prepareStatement(sqlCheck);
-                ResultSet rs = pstmtCheck.executeQuery()) {
-        
-                boolean existe = false;
-                if(rs.next() && rs.getInt(1) > 0) {
-                    existe = true;
-                }
-                
-                if (existe) {
-                    String sqlUpdate = "UPDATE empleado SET nombre = ?, apellidos = ?, jornada_semanal = ?, horas_anuales = ? WHERE id = 1";
-                    try (PreparedStatement pstmt = conn.prepareStatement(sqlUpdate)) {
-                        pstmt.setString(1, t.getNombre());
-                        pstmt.setString(2, t.getApellidos());
-                        pstmt.setDouble(3, t.getJornadaSemanal());
-                        pstmt.setDouble(4, t.getHorasAnuales());
-                        pstmt.executeUpdate();
-                        System.out.println("Datos del empleado actualizados correctamente.");
-                    }                
-                } else {
-                    String sqlInsert = "INSERT INTO empleado (nombre, apellidos, jornada_semanal, horas_anuales) VALUES (?, ?, ?, ?)";
-                    try (PreparedStatement pstmt = conn.prepareStatement(sqlInsert)) {
-                        pstmt.setString(1, t.getNombre());
-                        pstmt.setString(2, t.getApellidos());
-                        pstmt.setDouble(3, t.getJornadaSemanal());
-                        pstmt.setDouble(4, t.getHorasAnuales());
-                        pstmt.executeUpdate();
-                        System.out.println("Empleado guardado por primera vez.");
-                    }
-                }    
-            } catch (SQLException e) {
-                System.out.println("Error al guardar/actualizar el empleado: " + e.getMessage());
+    public static void guardarOActualizarEmpleado(Trabajador t) {
+        java.util.Objects.requireNonNull(
+                t,
+                "El trabajador no puede ser null."
+        );
+
+        if (t.getId() <= 0) {
+            throw new IllegalArgumentException(
+                    "El identificador del trabajador no es válido."
+            );
+        }
+
+        String sqlUpdate = "UPDATE empleado SET "
+                + "nombre = ?, apellidos = ?, "
+                + "jornada_semanal = ?, horas_anuales = ? "
+                + "WHERE id = ?";
+
+        String sqlInsert = "INSERT INTO empleado "
+                + "(nombre, apellidos, jornada_semanal, "
+                + "horas_anuales, id) "
+                + "VALUES (?, ?, ?, ?, ?)";
+
+        try (Connection conn = conectar()) {
+            if (conn == null) {
+                throw new SQLException(
+                        "No se ha podido conectar con la base de datos."
+                );
             }
+
+            conn.setAutoCommit(false);
+
+            try {
+                int actualizados;
+
+                try (PreparedStatement pstmt
+                        = conn.prepareStatement(sqlUpdate)) {
+
+                    pstmt.setString(1, t.getNombre());
+                    pstmt.setString(2, t.getApellidos());
+                    pstmt.setDouble(3, t.getJornadaSemanal());
+                    pstmt.setDouble(4, t.getHorasAnuales());
+                    pstmt.setInt(5, t.getId());
+
+                    actualizados = pstmt.executeUpdate();
+                }
+
+                if (actualizados == 0) {
+                    try (PreparedStatement pstmt
+                            = conn.prepareStatement(sqlInsert)) {
+
+                        pstmt.setString(1, t.getNombre());
+                        pstmt.setString(2, t.getApellidos());
+                        pstmt.setDouble(3, t.getJornadaSemanal());
+                        pstmt.setDouble(4, t.getHorasAnuales());
+                        pstmt.setInt(5, t.getId());
+
+                        pstmt.executeUpdate();
+                    }
+                }
+
+                conn.commit();
+
+            } catch (SQLException e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException errorRollback) {
+                    e.addSuppressed(errorRollback);
+                }
+
+                throw e;
+            }
+
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "No se han podido guardar los datos del trabajador.",
+                    e
+            );
+        }
     }
-    
+
     //Método para cargar los datos del empleado guardados en SQLLite
     public static Trabajador obtenerEmpleado() {
         String sql = "SELECT * FROM empleado LIMIT 1";
@@ -208,52 +249,112 @@ public class BaseDeDatos {
         public int festivosTrabajados = 0;
         public int diasVacaciones = 0;
     }
-    
+
     public static class ResumenPeriodo {
-    public double horasPlanificadas = 0.0;
-    public double horasEfectivas = 0.0;
-    public int diasTrabajados = 0;
-    public double horasComplementarias = 0.0;
-}
+
+        public double horasPlanificadas = 0.0;
+        public double horasEfectivas = 0.0;
+        public int diasTrabajados = 0;
+
+        public double horasIrregularesPos = 0.0;
+        public int sabadosLibres = 0;
+        public int festivosTrabajados = 0;
+        public int diasVacaciones = 0;
+
+        // Conservamos el acumulador existente.
+        // No representa el intervalo de nómina 23–22.
+        public double horasComplementarias = 0.0;
+    }
 
     /**
-     * Calcula los indicadores de los turnos del periodo seleccionado. La lista
-     * debe llegar filtrada previamente por empleado, año y mes.
+     * Calcula los indicadores del periodo. Los turnos deben llegar filtrados
+     * por empleado, año y mes.
      */
     public static ResumenPeriodo calcularResumenPeriodo(
-            java.util.List<RegistroTurno> turnos) {
+            java.util.List<RegistroTurno> turnos,
+            Trabajador empleado) {
 
         java.util.Objects.requireNonNull(
                 turnos,
                 "La lista de turnos no puede ser null."
         );
 
+        java.util.Objects.requireNonNull(
+                empleado,
+                "El trabajador no puede ser null."
+        );
+
         ResumenPeriodo resumen = new ResumenPeriodo();
 
+        double horasPrevistasDiarias
+                = obtenerHorasPrevistasDiarias(empleado);
+
         for (RegistroTurno turno : turnos) {
+            String tipo = turno.getTipoDia();
+            LocalDate fecha = turno.getFecha();
+
             resumen.horasComplementarias
                     += turno.getHorasComplementarias();
 
-            if (!"NORMAL".equals(turno.getTipoDia())) {
+            // Vacaciones registradas en el periodo.
+            if ("VACACIONES".equals(tipo)) {
+                resumen.diasVacaciones++;
+            }
+
+            // Mismo criterio que el cálculo anual existente.
+            if (fecha != null
+                    && fecha.getDayOfWeek()
+                    == java.time.DayOfWeek.SATURDAY
+                    && !"VACACIONES".equals(tipo)
+                    && ("LIBRE".equals(tipo)
+                    || turno.getHoraEntrada() == null)) {
+
+                resumen.sabadosLibres++;
+            }
+
+            if (!"NORMAL".equals(tipo)) {
                 continue;
             }
 
-            resumen.horasPlanificadas
-                    += turno.calcularHorasOriginales();
+            double horasOriginales
+                    = turno.calcularHorasOriginales();
 
             double horasEfectivas
                     = turno.calcularHorasEfectivas();
 
+            resumen.horasPlanificadas += horasOriginales;
             resumen.horasEfectivas += horasEfectivas;
 
             if (horasEfectivas > 0) {
                 resumen.diasTrabajados++;
             }
+
+            // Las irregulares se calculan sobre el horario original.
+            if (horasOriginales > horasPrevistasDiarias) {
+                resumen.horasIrregularesPos
+                        += horasOriginales - horasPrevistasDiarias;
+            }
+
+            // Un domingo que también sea festivo cuenta una sola vez.
+            if (fecha != null
+                    && turno.getHoraEntrada() != null) {
+
+                boolean esDomingo
+                        = fecha.getDayOfWeek()
+                        == java.time.DayOfWeek.SUNDAY;
+
+                boolean esFestivo
+                        = GestorFestivos.esFestivo(fecha);
+
+                if (esDomingo || esFestivo) {
+                    resumen.festivosTrabajados++;
+                }
+            }
         }
 
         return resumen;
     }
-    
+
     
     public static void actualizarHorasComplementarias(int empleadoId, String fechaStr, double horasCompl) {
         String sql = "UPDATE registro_horas SET horas_complementarias = ? WHERE empleado_id = ? AND fecha = ?";
@@ -299,8 +400,27 @@ public class BaseDeDatos {
         
         return anios;
     }
+
     
-    
+    private static double obtenerHorasPrevistasDiarias(
+            Trabajador empleado) {
+
+        double jornadaSemanal = empleado.getJornadaSemanal();
+
+        if (jornadaSemanal == 12.0
+                || jornadaSemanal == 30.0) {
+            return 6.0;
+        }
+
+        if (jornadaSemanal == 20.0
+                || jornadaSemanal == 25.0) {
+            return 5.0;
+        }
+
+        return 8.0;
+    }
+
+
     public static ResumenJornada calcularResumenAnual(Trabajador empleado, String anioFiltro) {
         ResumenJornada resumen = new ResumenJornada();
         if (empleado == null) {
@@ -314,14 +434,8 @@ public class BaseDeDatos {
             );
         }
 
-        double horasPrevistasDiarias = 8.0;
-        double jornadaSemanal = empleado.getJornadaSemanal();
-
-        if (jornadaSemanal == 12.0 || jornadaSemanal == 30.0) {
-            horasPrevistasDiarias = 6.0;
-        } else if (jornadaSemanal == 20.0 || jornadaSemanal == 25.0) {
-            horasPrevistasDiarias = 5.0;
-        }
+        double horasPrevistasDiarias
+                = obtenerHorasPrevistasDiarias(empleado);
 
         // Ya no hay SQL aquí: pedimos la lista de turnos y la recorremos
         for (RegistroTurno turno : obtenerTurnos(empleado.getId(), anioFiltro)) {
@@ -681,8 +795,110 @@ public static java.util.List<RegistroTurno> obtenerTurnos(
             );
         }
     }
-    
-    
-}
 
+    /**
+     * Complementarias de nómina para la selección de año y mes.
+     *
+     * Mes 1-12: del 23 anterior al 22 del mes elegido. Mes 0: del 23 de
+     * diciembre anterior al 22 de diciembre del año elegido. Año "Todos": todos
+     * los registros disponibles.
+     */
+    public static ResumenNomina calcularResumenNomina(
+            int empleadoId,
+            String anioFiltro,
+            int mesFiltro) {
+
+        if (empleadoId <= 0) {
+            throw new IllegalArgumentException(
+                    "El identificador del empleado no es válido."
+            );
+        }
+
+        if (mesFiltro < 0 || mesFiltro > 12) {
+            throw new IllegalArgumentException(
+                    "El mes debe estar entre 0 y 12."
+            );
+        }
+
+        boolean todosLosAnios = "Todos".equals(anioFiltro);
+
+        LocalDate inicio = null;
+        LocalDate fin = null;
+
+        if (!todosLosAnios) {
+            if (anioFiltro == null
+                    || !anioFiltro.matches("[0-9]{4}")) {
+
+                throw new IllegalArgumentException(
+                        "Selecciona un año válido."
+                );
+            }
+
+            int anio = Integer.parseInt(anioFiltro);
+
+            if (mesFiltro == 0) {
+                inicio = LocalDate.of(anio - 1, 12, 23);
+                fin = LocalDate.of(anio, 12, 22);
+
+            } else {
+                java.time.YearMonth periodo
+                        = java.time.YearMonth.of(anio, mesFiltro);
+
+                inicio = periodo.minusMonths(1).atDay(23);
+                fin = periodo.atDay(22);
+            }
+        }
+
+        String sql = "SELECT COALESCE("
+                + "SUM(horas_complementarias), 0"
+                + ") AS total "
+                + "FROM registro_horas "
+                + "WHERE empleado_id = ?";
+
+        if (!todosLosAnios) {
+            sql += " AND fecha >= ? AND fecha <= ?";
+        }
+
+        try (Connection conn = conectar()) {
+            if (conn == null) {
+                throw new SQLException(
+                        "No se ha podido conectar con la base de datos."
+                );
+            }
+
+            try (PreparedStatement pstmt
+                    = conn.prepareStatement(sql)) {
+
+                pstmt.setInt(1, empleadoId);
+
+                if (!todosLosAnios) {
+                    pstmt.setString(2, inicio.toString());
+                    pstmt.setString(3, fin.toString());
+                }
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new SQLException(
+                                "No se ha obtenido el resumen de nómina."
+                        );
+                    }
+
+                    return new ResumenNomina(
+                            inicio,
+                            fin,
+                            rs.getDouble("total")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "No se han podido calcular las "
+                    + "complementarias de nómina.",
+                    e
+            );
+        }
+    }
+
+}
 

@@ -34,7 +34,7 @@
       <SubComponents>
         <MenuItem class="javax.swing.JMenuItem" name="mnuEditarDia">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Editar d&#xed;a / cambiar turno..."/>
+            <Property name="text" type="java.lang.String" value="Editar d&#xed;a / cambiar turno&#x2026;"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="mnuEditarDiaActionPerformed"/>
@@ -42,7 +42,7 @@
         </MenuItem>
         <MenuItem class="javax.swing.JMenuItem" name="mnuRegistrarComplementarias">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Registrar horas complementarias..."/>
+            <Property name="text" type="java.lang.String" value="Registrar horas complementarias&#x2026;"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="mnuRegistrarComplementariasActionPerformed"/>
@@ -77,7 +77,7 @@
   </NonVisualComponents>
   <Properties>
     <Property name="defaultCloseOperation" type="int" value="3"/>
-    <Property name="title" type="java.lang.String" value="GESTI&#xd3;N DE HORARIOS Y JORNADA"/>
+    <Property name="title" type="java.lang.String" value="Gesti&#xf3;n de horarios y jornada"/>
   </Properties>
   <SyntheticProperties>
     <SyntheticProperty name="formSizePolicy" type="int" value="1"/>
@@ -117,13 +117,14 @@
               <Component id="jPanelFiltro" min="-2" pref="55" max="-2" attributes="0"/>
               <EmptySpace max="-2" attributes="0"/>
               <Group type="103" groupAlignment="0" max="-2" attributes="0">
-                  <Component id="jPanelResumenAnual" pref="0" max="32767" attributes="0"/>
+                  <Component id="jPanelResumenAnual" min="-2" pref="206" max="-2" attributes="0"/>
                   <Component id="jPanelResumenPeriodo" max="32767" attributes="0"/>
               </Group>
               <EmptySpace min="-2" max="-2" attributes="0"/>
               <Component id="jPanelBotonera" min="-2" max="-2" attributes="0"/>
               <EmptySpace max="-2" attributes="0"/>
-              <Component id="jScrollPane1Tabla" pref="227" max="32767" attributes="0"/>
+              <Component id="jScrollPane1Tabla" pref="250" max="32767" attributes="0"/>
+              <EmptySpace max="-2" attributes="0"/>
           </Group>
       </Group>
     </DimensionLayout>
@@ -144,7 +145,7 @@
                 <Column editable="false" title="D&#xed;a de la semana" type="java.lang.String"/>
                 <Column editable="false" title="Entrada" type="java.lang.String"/>
                 <Column editable="false" title="Salida" type="java.lang.String"/>
-                <Column editable="false" title="Horas turno(h)" type="java.lang.String"/>
+                <Column editable="false" title="Horas efectivas (h)" type="java.lang.String"/>
                 <Column editable="false" title="Descanso (min)" type="java.lang.String"/>
                 <Column editable="false" title="Compl. (h)" type="java.lang.String"/>
                 <Column editable="false" title="Tipo d&#xed;a" type="java.lang.String"/>
@@ -226,7 +227,7 @@
         </Component>
         <Component class="javax.swing.JButton" name="btnImportar">
           <Properties>
-            <Property name="text" type="java.lang.String" value=" Importar &#x25be;  "/>
+            <Property name="text" type="java.lang.String" value="Importar &#x25be;"/>
             <Property name="maximumSize" type="java.awt.Dimension" editor="org.netbeans.beaninfo.editors.DimensionEditor">
               <Dimension value="[177, 23]"/>
             </Property>
@@ -240,7 +241,7 @@
         </Component>
         <Component class="javax.swing.JButton" name="btnTurno">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Turno &#x25be;  "/>
+            <Property name="text" type="java.lang.String" value="Turno &#x25be;"/>
             <Property name="maximumSize" type="java.awt.Dimension" editor="org.netbeans.beaninfo.editors.DimensionEditor">
               <Dimension value="[177, 23]"/>
             </Property>
@@ -254,7 +255,7 @@
         </Component>
         <Component class="javax.swing.JButton" name="btnExportar">
           <Properties>
-            <Property name="text" type="java.lang.String" value=" Exportar &#x25be;  "/>
+            <Property name="text" type="java.lang.String" value="Exportar &#x25be;"/>
             <Property name="maximumSize" type="java.awt.Dimension" editor="org.netbeans.beaninfo.editors.DimensionEditor">
               <Dimension value="[177, 23]"/>
             </Property>
@@ -329,7 +330,7 @@
       <SubComponents>
         <Component class="javax.swing.JButton" name="btnTrabajador">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Trabajador..."/>
+            <Property name="text" type="java.lang.String" value="Trabajador&#x2026;"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="btnTrabajadorActionPerformed"/>
@@ -354,61 +355,66 @@
       <Layout>
         <DimensionLayout dim="0">
           <Group type="103" groupAlignment="0" attributes="0">
-              <Group type="102" alignment="0" attributes="0">
-                  <EmptySpace max="32767" attributes="0"/>
+              <Group type="102" alignment="1" attributes="0">
                   <Group type="103" groupAlignment="0" attributes="0">
-                      <Group type="102" alignment="0" attributes="0">
-                          <Group type="103" groupAlignment="0" attributes="0">
-                              <Component id="lblHorasPlanificadasPeriodo" min="-2" max="-2" attributes="0"/>
-                              <Component id="lblHorasEfectivasPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                              <Component id="lblIrregularesPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                          </Group>
-                          <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                      <Group type="102" attributes="0">
+                          <EmptySpace max="32767" attributes="0"/>
                           <Group type="103" groupAlignment="0" max="-2" attributes="0">
-                              <Component id="lblHorasEfectivasPeriodoVal" pref="80" max="32767" attributes="0"/>
-                              <Component id="lblHorasPlanificadasPeriodoVal" max="32767" attributes="0"/>
-                              <Component id="lblIrregularesPeriodoVal" max="32767" attributes="0"/>
-                          </Group>
-                          <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
-                          <Group type="103" groupAlignment="0" attributes="0">
-                              <Component id="lblDiasTrabajadosPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                              <Component id="lblFestivosPeriodo" alignment="1" min="-2" max="-2" attributes="0"/>
-                          </Group>
-                          <EmptySpace type="unrelated" max="-2" attributes="0"/>
-                          <Group type="103" groupAlignment="0" max="-2" attributes="0">
-                              <Component id="lblFestivosPeriodoVal" pref="80" max="32767" attributes="0"/>
-                              <Component id="lblDiasTrabajadosPeriodoVal" max="32767" attributes="0"/>
-                          </Group>
-                          <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
-                          <Group type="103" groupAlignment="0" attributes="0">
-                              <Component id="lblVacacionesPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                              <Component id="lblSabadosLibresPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                          </Group>
-                          <EmptySpace type="unrelated" max="-2" attributes="0"/>
-                          <Group type="103" groupAlignment="0" attributes="0">
-                              <Component id="lblSabadosLibresPeriodoVal" min="-2" pref="80" max="-2" attributes="0"/>
-                              <Component id="lblVacacionesPeriodoVal" min="-2" pref="80" max="-2" attributes="0"/>
+                              <Component id="lblPeriodoNominaVal" max="32767" attributes="0"/>
+                              <Group type="102" alignment="0" attributes="0">
+                                  <Group type="103" groupAlignment="1" max="-2" attributes="0">
+                                      <Group type="102" alignment="0" attributes="0">
+                                          <Component id="lblPeriodoSeleccionado" min="-2" max="-2" attributes="0"/>
+                                          <EmptySpace type="separate" max="-2" attributes="0"/>
+                                          <Component id="lblPeriodoSeleccionadoVal" max="32767" attributes="0"/>
+                                      </Group>
+                                      <Group type="102" alignment="0" attributes="0">
+                                          <Group type="103" groupAlignment="0" attributes="0">
+                                              <Component id="lblHorasPlanificadasPeriodo" min="-2" max="-2" attributes="0"/>
+                                              <Component id="lblHorasEfectivasPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
+                                              <Component id="lblIrregularesPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
+                                          </Group>
+                                          <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                                          <Group type="103" groupAlignment="0" max="-2" attributes="0">
+                                              <Component id="lblHorasEfectivasPeriodoVal" pref="80" max="32767" attributes="0"/>
+                                              <Component id="lblHorasPlanificadasPeriodoVal" max="32767" attributes="0"/>
+                                              <Component id="lblIrregularesPeriodoVal" max="32767" attributes="0"/>
+                                          </Group>
+                                          <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
+                                          <Group type="103" groupAlignment="0" attributes="0">
+                                              <Component id="lblDiasTrabajadosPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
+                                              <Component id="lblFestivosPeriodo" alignment="1" min="-2" max="-2" attributes="0"/>
+                                          </Group>
+                                          <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                                          <Group type="103" groupAlignment="0" max="-2" attributes="0">
+                                              <Component id="lblFestivosPeriodoVal" pref="80" max="32767" attributes="0"/>
+                                              <Component id="lblDiasTrabajadosPeriodoVal" max="32767" attributes="0"/>
+                                          </Group>
+                                      </Group>
+                                  </Group>
+                                  <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
+                                  <Group type="103" groupAlignment="0" attributes="0">
+                                      <Component id="lblVacacionesPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
+                                      <Component id="lblSabadosLibresPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
+                                  </Group>
+                                  <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                                  <Group type="103" groupAlignment="0" attributes="0">
+                                      <Component id="lblSabadosLibresPeriodoVal" min="-2" pref="80" max="-2" attributes="0"/>
+                                      <Component id="lblVacacionesPeriodoVal" min="-2" pref="80" max="-2" attributes="0"/>
+                                  </Group>
+                              </Group>
                           </Group>
                       </Group>
-                      <Group type="103" alignment="0" groupAlignment="1" max="-2" attributes="0">
-                          <Group type="102" alignment="0" attributes="0">
-                              <Component id="lblPeriodoSeleccionado" min="-2" max="-2" attributes="0"/>
-                              <EmptySpace type="separate" max="-2" attributes="0"/>
-                              <Component id="lblPeriodoSeleccionadoVal" max="32767" attributes="0"/>
-                          </Group>
-                          <Component id="lblFechasPeriodoVal" alignment="0" min="-2" pref="299" max="-2" attributes="0"/>
-                      </Group>
-                      <Component id="lblAvisoPeriodoNomina" alignment="0" min="-2" pref="268" max="-2" attributes="0"/>
-                      <Component id="lblComplementariasPeriodo" alignment="0" min="-2" max="-2" attributes="0"/>
-                      <Group type="102" alignment="0" attributes="0">
-                          <Component id="lblPeriodoNominaVal" min="-2" pref="268" max="-2" attributes="0"/>
-                          <EmptySpace type="separate" max="-2" attributes="0"/>
+                      <Group type="102" attributes="0">
+                          <Component id="lblComplementariasPeriodo" min="-2" max="-2" attributes="0"/>
+                          <EmptySpace min="-2" pref="39" max="-2" attributes="0"/>
                           <Component id="lblComplNominaVal" min="-2" pref="59" max="-2" attributes="0"/>
                           <EmptySpace type="unrelated" max="-2" attributes="0"/>
                           <Component id="btnInfoComplementariasNomina" min="-2" max="-2" attributes="0"/>
+                          <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
                       </Group>
                   </Group>
-                  <EmptySpace min="-2" max="-2" attributes="0"/>
+                  <EmptySpace max="-2" attributes="0"/>
               </Group>
           </Group>
         </DimensionLayout>
@@ -419,8 +425,6 @@
                       <Component id="lblPeriodoSeleccionado" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="lblPeriodoSeleccionadoVal" alignment="3" min="-2" pref="22" max="-2" attributes="0"/>
                   </Group>
-                  <EmptySpace max="-2" attributes="0"/>
-                  <Component id="lblFechasPeriodoVal" min="-2" pref="22" max="-2" attributes="0"/>
                   <EmptySpace min="-2" max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="3" attributes="0">
                       <Component id="lblHorasPlanificadasPeriodoVal" alignment="3" min="-2" pref="22" max="-2" attributes="0"/>
@@ -447,15 +451,15 @@
                       <Component id="lblIrregularesPeriodoVal" alignment="3" min="-2" pref="22" max="-2" attributes="0"/>
                   </Group>
                   <EmptySpace max="32767" attributes="0"/>
-                  <Component id="lblComplementariasPeriodo" min="-2" max="-2" attributes="0"/>
-                  <EmptySpace max="-2" attributes="0"/>
-                  <Group type="103" groupAlignment="0" max="-2" attributes="0">
-                      <Component id="lblComplNominaVal" pref="22" max="32767" attributes="0"/>
-                      <Component id="btnInfoComplementariasNomina" max="32767" attributes="0"/>
-                      <Component id="lblPeriodoNominaVal" alignment="0" max="32767" attributes="0"/>
+                  <Group type="103" groupAlignment="0" attributes="0">
+                      <Group type="103" alignment="1" groupAlignment="3" attributes="0">
+                          <Component id="lblComplementariasPeriodo" alignment="3" min="-2" max="-2" attributes="0"/>
+                          <Component id="lblComplNominaVal" alignment="3" min="-2" pref="23" max="-2" attributes="0"/>
+                      </Group>
+                      <Component id="btnInfoComplementariasNomina" alignment="1" min="-2" pref="22" max="-2" attributes="0"/>
                   </Group>
                   <EmptySpace max="-2" attributes="0"/>
-                  <Component id="lblAvisoPeriodoNomina" min="-2" max="-2" attributes="0"/>
+                  <Component id="lblPeriodoNominaVal" min="-2" max="-2" attributes="0"/>
                   <EmptySpace max="32767" attributes="0"/>
               </Group>
           </Group>
@@ -541,13 +545,6 @@
                 </LineBorder>
               </Border>
             </Property>
-            <Property name="horizontalTextPosition" type="int" value="0"/>
-            <Property name="opaque" type="boolean" value="true"/>
-          </Properties>
-        </Component>
-        <Component class="javax.swing.JLabel" name="lblAvisoPeriodoNomina">
-          <Properties>
-            <Property name="text" type="java.lang.String" value="No coincide con el mes o a&#xf1;o natural."/>
             <Property name="horizontalTextPosition" type="int" value="0"/>
             <Property name="opaque" type="boolean" value="true"/>
           </Properties>
@@ -692,21 +689,13 @@
             <Property name="opaque" type="boolean" value="true"/>
           </Properties>
         </Component>
-        <Component class="javax.swing.JLabel" name="lblFechasPeriodoVal">
-          <Properties>
-            <Property name="text" type="java.lang.String" value="-"/>
-            <Property name="toolTipText" type="java.lang.String" value=""/>
-            <Property name="horizontalTextPosition" type="int" value="0"/>
-            <Property name="opaque" type="boolean" value="true"/>
-          </Properties>
-        </Component>
       </SubComponents>
     </Container>
     <Container class="javax.swing.JPanel" name="jPanelResumenAnual">
       <Properties>
         <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
           <Border info="org.netbeans.modules.form.compat2.border.TitledBorderInfo">
-            <TitledBorder title="Referencia Anual"/>
+            <TitledBorder title="Referencia anual"/>
           </Border>
         </Property>
       </Properties>
@@ -718,11 +707,6 @@
                   <EmptySpace max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="0" attributes="0">
                       <Component id="lblAvisosControlAnual" max="32767" attributes="0"/>
-                      <Group type="102" alignment="0" attributes="0">
-                          <Component id="lblAnyoSeleccionado" min="-2" max="-2" attributes="0"/>
-                          <EmptySpace min="-2" pref="92" max="-2" attributes="0"/>
-                          <Component id="lblAnioControlVal" min="-2" pref="70" max="-2" attributes="0"/>
-                      </Group>
                       <Group type="102" alignment="1" attributes="0">
                           <Group type="103" groupAlignment="1" attributes="0">
                               <Group type="102" alignment="0" attributes="0">
@@ -761,11 +745,7 @@
         <DimensionLayout dim="1">
           <Group type="103" groupAlignment="0" attributes="0">
               <Group type="102" alignment="0" attributes="0">
-                  <Group type="103" groupAlignment="3" attributes="0">
-                      <Component id="lblAnyoSeleccionado" alignment="3" min="-2" max="-2" attributes="0"/>
-                      <Component id="lblAnioControlVal" alignment="3" min="-2" pref="16" max="-2" attributes="0"/>
-                  </Group>
-                  <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
+                  <EmptySpace min="-2" max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="1" attributes="0">
                       <Component id="lblHorasTrabajadas" min="-2" max="-2" attributes="0"/>
                       <Component id="lblHorasTrabajadasVal" min="-2" pref="22" max="-2" attributes="0"/>
@@ -793,7 +773,7 @@
                       <Component id="lblFestivosTrabajadosVal" min="-2" pref="22" max="-2" attributes="0"/>
                       <Component id="btnInfoDomingosFestivosTrabajados" min="-2" pref="22" max="-2" attributes="0"/>
                   </Group>
-                  <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                  <EmptySpace max="-2" attributes="0"/>
                   <Component id="lblAvisosControlAnual" min="-2" pref="33" max="-2" attributes="0"/>
                   <EmptySpace max="32767" attributes="0"/>
               </Group>
@@ -801,14 +781,6 @@
         </DimensionLayout>
       </Layout>
       <SubComponents>
-        <Component class="javax.swing.JLabel" name="lblAnioControlVal">
-          <Properties>
-            <Property name="horizontalAlignment" type="int" value="0"/>
-            <Property name="text" type="java.lang.String" value="-"/>
-            <Property name="horizontalTextPosition" type="int" value="0"/>
-            <Property name="opaque" type="boolean" value="true"/>
-          </Properties>
-        </Component>
         <Component class="javax.swing.JLabel" name="lblHorasTrabajadas">
           <Properties>
             <Property name="text" type="java.lang.String" value="Horas planificadas:"/>
@@ -856,7 +828,7 @@
         </Component>
         <Component class="javax.swing.JLabel" name="lblHorasIrregularesPos">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Irregulares acumuladas:"/>
+            <Property name="text" type="java.lang.String" value="Horas irregulares (+):"/>
             <Property name="verticalAlignment" type="int" value="3"/>
           </Properties>
         </Component>
@@ -894,7 +866,7 @@
         </Component>
         <Component class="javax.swing.JLabel" name="lblPorcentajeHorasIrregulares">
           <Properties>
-            <Property name="text" type="java.lang.String" value="% Horas irregulares (+)"/>
+            <Property name="text" type="java.lang.String" value="% Horas irregulares (+):"/>
             <Property name="verticalAlignment" type="int" value="3"/>
           </Properties>
         </Component>
@@ -967,11 +939,6 @@
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="btnInfoDomingosFestivosTrabajadosActionPerformed"/>
           </Events>
-        </Component>
-        <Component class="javax.swing.JLabel" name="lblAnyoSeleccionado">
-          <Properties>
-            <Property name="text" type="java.lang.String" value="A&#xf1;o:"/>
-          </Properties>
         </Component>
         <Component class="javax.swing.JLabel" name="lblAvisosControlAnual">
           <Properties>
@@ -1085,7 +1052,7 @@
         </Component>
         <Component class="javax.swing.JButton" name="btnMesActual">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Mes Actual"/>
+            <Property name="text" type="java.lang.String" value="Mes actual"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="btnMesActualActionPerformed"/>

@@ -38,7 +38,7 @@ public class DialogoAcercaDe extends javax.swing.JDialog {
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
 
         lblVersionInfo.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        lblVersionInfo.setText("Gestor de horarios de primark v1.2");
+        lblVersionInfo.setText("Gestor de horarios de primark v1.3");
 
         lblAutor.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         lblAutor.setText("Pablo Martín Seijo");

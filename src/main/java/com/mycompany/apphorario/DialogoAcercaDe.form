@@ -73,7 +73,7 @@
         <Component class="javax.swing.JLabel" name="lblVersionInfo">
           <Properties>
             <Property name="horizontalAlignment" type="int" value="0"/>
-            <Property name="text" type="java.lang.String" value="Gestor de horarios de primark v1.2"/>
+            <Property name="text" type="java.lang.String" value="Gestor de horarios de primark v1.3"/>
           </Properties>
         </Component>
         <Component class="javax.swing.JLabel" name="lblAutor">
